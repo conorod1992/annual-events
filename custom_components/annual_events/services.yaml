@@ -1,0 +1,67 @@
+create_event:
+  fields:
+    name:
+      required: true
+      selector: { text: {} }
+    month:
+      required: true
+      selector: { number: { min: 1, max: 12, mode: box } }
+    day:
+      required: true
+      selector: { number: { min: 1, max: 31, mode: box } }
+    year:
+      selector: { number: { min: 1, max: 9999, mode: box } }
+    category:
+      selector: { text: {} }
+    aliases:
+      selector: { text: { multiple: true } }
+    icon:
+      selector: { icon: {} }
+    notes:
+      selector: { text: { multiline: true } }
+    important:
+      selector: { boolean: {} }
+    enabled:
+      selector: { boolean: {} }
+    expose_entity:
+      selector: { boolean: {} }
+update_event:
+  fields:
+    event_id:
+      required: true
+      selector: { text: {} }
+    name: { selector: { text: {} } }
+    month: { selector: { number: { min: 1, max: 12, mode: box } } }
+    day: { selector: { number: { min: 1, max: 31, mode: box } } }
+    year: { selector: { number: { min: 1, max: 9999, mode: box } } }
+    category: { selector: { text: {} } }
+    aliases: { selector: { text: { multiple: true } } }
+    icon: { selector: { icon: {} } }
+    notes: { selector: { text: { multiline: true } } }
+    important: { selector: { boolean: {} } }
+    enabled: { selector: { boolean: {} } }
+    expose_entity: { selector: { boolean: {} } }
+delete_event:
+  fields:
+    event_id:
+      required: true
+      selector: { text: {} }
+search:
+  fields:
+    query: { required: true, selector: { text: {} } }
+    category: { selector: { text: {} } }
+    enabled: { selector: { boolean: {} } }
+    limit: { selector: { number: { min: 1, max: 100, mode: box } } }
+get_upcoming:
+  fields:
+    days: { selector: { number: { min: 0, max: 3660, mode: box } } }
+    limit: { selector: { number: { min: 1, max: 100, mode: box } } }
+    category: { selector: { text: {} } }
+    important_only: { selector: { boolean: {} } }
+get_between:
+  fields:
+    start: { required: true, selector: { date: {} } }
+    end: { required: true, selector: { date: {} } }
+    limit: { selector: { number: { min: 1, max: 5000, mode: box } } }
+    category: { selector: { text: {} } }
+    important_only: { selector: { boolean: {} } }

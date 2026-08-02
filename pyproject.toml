@@ -1,0 +1,59 @@
+[project]
+name = "annual-events"
+version = "1.0.0"
+description = "A local, collection-oriented Home Assistant integration for yearly events"
+readme = "README.md"
+requires-python = ">=3.13.2"
+license = "MIT"
+authors = [{ name = "Conor" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+
+[project.optional-dependencies]
+dev = [
+  "homeassistant>=2026.7.0",
+  "home-assistant-frontend>=20260729.3",
+  "pytest>=8.4,<10",
+  "pytest-asyncio>=1.0,<2",
+  "pytest-homeassistant-custom-component>=0.13.351,<0.14",
+  "ruff>=0.16,<0.17",
+  "mypy>=1.19,<2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "ASYNC", "B", "C4", "DTZ", "LOG", "PIE", "RUF", "SIM", "T20"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unused_configs = true
+exclude = ["tests"]
+
+[[tool.mypy.overrides]]
+module = "homeassistant.*"
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["custom_components/annual_events"]
+omit = ["*/frontend/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 75

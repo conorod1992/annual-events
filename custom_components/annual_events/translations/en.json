@@ -1,0 +1,126 @@
+{
+  "title": "Annual Events",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Annual Events",
+        "description": "Create one local collection for birthdays, anniversaries, memorials, holidays, and other yearly events."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Annual Events is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Annual Events options",
+        "data": {
+          "leap_day_policy": "Leap-day handling",
+          "upcoming_days": "Upcoming count period (days)",
+          "show_panel": "Show Annual Events in the sidebar"
+        },
+        "data_description": {
+          "leap_day_policy": "How 29 February events are observed in non-leap years.",
+          "upcoming_days": "Inclusive horizon used by the upcoming count sensor.",
+          "show_panel": "The management page remains available through the integration when hidden."
+        }
+      }
+    }
+  },
+  "selector": {
+    "leap_day_policy": {
+      "options": {
+        "feb_28": "Observe on 28 February",
+        "mar_1": "Observe on 1 March",
+        "leap_only": "Only in leap years"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_annual_event": { "name": "Next annual event" },
+      "next_important_annual_event": { "name": "Next important annual event" },
+      "upcoming_annual_events": { "name": "Upcoming annual events" }
+    }
+  },
+  "services": {
+    "create_event": {
+      "name": "Create event",
+      "description": "Creates a local annual event and optionally returns the new record.",
+      "fields": {
+        "name": { "name": "Name", "description": "Required display name." },
+        "month": { "name": "Month", "description": "Calendar month from 1 to 12." },
+        "day": { "name": "Day", "description": "Valid day in the selected month." },
+        "year": { "name": "Original year", "description": "Optional birth, wedding, or starting year. The original date is occurrence zero." },
+        "category": { "name": "Category", "description": "A built-in or custom category." },
+        "aliases": { "name": "Aliases", "description": "Alternative names used by search and voice." },
+        "icon": { "name": "Icon", "description": "Optional Material Design icon." },
+        "notes": { "name": "Notes", "description": "Optional private notes stored locally." },
+        "important": { "name": "Important", "description": "Marks the event as important." },
+        "enabled": { "name": "Enabled", "description": "Includes the event in active queries and entities." },
+        "expose_entity": { "name": "Expose individual sensor", "description": "Creates a stable sensor for this event while it is enabled." }
+      }
+    },
+    "update_event": {
+      "name": "Update event",
+      "description": "Updates explicit fields on one exact event ID and optionally returns the record.",
+      "fields": {
+        "event_id": { "name": "Event ID", "description": "Exact stable ID of the event to update." },
+        "name": { "name": "Name", "description": "New display name." },
+        "month": { "name": "Month", "description": "New calendar month from 1 to 12." },
+        "day": { "name": "Day", "description": "New valid day in the selected month." },
+        "year": { "name": "Original year", "description": "Original year, or null when unknown." },
+        "category": { "name": "Category", "description": "A built-in or custom category." },
+        "aliases": { "name": "Aliases", "description": "Replacement list of alternative names." },
+        "icon": { "name": "Icon", "description": "Material Design icon, or null to clear it." },
+        "notes": { "name": "Notes", "description": "Private notes, or null to clear them." },
+        "important": { "name": "Important", "description": "Whether the event is important." },
+        "enabled": { "name": "Enabled", "description": "Whether the event participates in active results." },
+        "expose_entity": { "name": "Expose individual sensor", "description": "Whether an enabled event has its own sensor." }
+      }
+    },
+    "delete_event": {
+      "name": "Delete event",
+      "description": "Permanently deletes one exact annual event ID.",
+      "fields": {
+        "event_id": { "name": "Event ID", "description": "Exact stable ID of the event to delete." }
+      }
+    },
+    "search": {
+      "name": "Search annual events",
+      "description": "Returns deterministically ranked annual event records as structured response data.",
+      "fields": {
+        "query": { "name": "Query", "description": "Name, alias, category, or notes text to find." },
+        "category": { "name": "Category", "description": "Optional exact category filter." },
+        "enabled": { "name": "Enabled state", "description": "Optional enabled or disabled filter." },
+        "limit": { "name": "Result limit", "description": "Maximum number of matches from 1 to 100." }
+      }
+    },
+    "get_upcoming": {
+      "name": "Get upcoming annual events",
+      "description": "Returns concrete occurrences from today through an inclusive day horizon.",
+      "fields": {
+        "days": { "name": "Days", "description": "Inclusive local-calendar horizon from 0 to 3660 days." },
+        "limit": { "name": "Result limit", "description": "Maximum number of occurrences from 1 to 100." },
+        "category": { "name": "Category", "description": "Optional exact category filter." },
+        "important_only": { "name": "Important only", "description": "Returns only important events when enabled." }
+      }
+    },
+    "get_between": {
+      "name": "Get annual events between dates",
+      "description": "Returns concrete occurrences in an inclusive local-date range.",
+      "fields": {
+        "start": { "name": "Start date", "description": "Inclusive start date." },
+        "end": { "name": "End date", "description": "Inclusive end date." },
+        "limit": { "name": "Result limit", "description": "Maximum number of occurrences from 1 to 5000." },
+        "category": { "name": "Category", "description": "Optional exact category filter." },
+        "important_only": { "name": "Important only", "description": "Returns only important events when enabled." }
+      }
+    }
+  },
+  "exceptions": {
+    "not_found": { "message": "The annual event could not be found." },
+    "invalid_format": { "message": "The annual event data is invalid." }
+  }
+}
