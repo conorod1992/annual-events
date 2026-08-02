@@ -252,7 +252,7 @@ The frontend is a checked-in, dependency-free web component; no Node.js build is
 - LLM access is read-only and depends on the Home Assistant contributed-tool platform.
 - JSON/CSV/ICS/vCard import and export are not included yet.
 - Country holiday sources and external holiday APIs are intentionally absent.
-- Screenshots and official Home Assistant brand assets are not yet available.
+- Screenshots are not yet available.
 
 Planned work includes versioned JSON import/export with validation and duplicate policies, additional translations, bulk editing, optional import formats, and safe write tools if Home Assistant exposes a sufficiently clear permission and confirmation model.
 
