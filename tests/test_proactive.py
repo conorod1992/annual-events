@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
-    async_fire_time_changed_exact,
+    async_fire_time_changed,
 )
 
 from custom_components.annual_events.const import DOMAIN, EVENT_OCCURRENCE, SIGNAL_UPDATED
@@ -176,7 +176,7 @@ async def test_failed_startup_cleans_up_listeners(hass, freezer):
     storage.fail_saves = False
     freezer.move_to("2026-08-01 18:00:00+00:00")
     async_dispatcher_send(hass, SIGNAL_UPDATED)
-    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 16, 0, tzinfo=UTC))
+    async_fire_time_changed(hass, datetime(2026, 8, 1, 16, 0, tzinfo=UTC))
     await hass.async_block_till_done()
     assert seen == []
 
@@ -196,16 +196,16 @@ async def test_configured_trigger_time_uses_scheduled_callback(hass, freezer):
     coordinator = ProactiveEventCoordinator(hass, entry, manager, MemoryDeliveryStorage())
     await coordinator.async_start()
 
-    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 15, 29, tzinfo=UTC))
+    async_fire_time_changed(hass, datetime(2026, 8, 1, 15, 29, tzinfo=UTC))
     await hass.async_block_till_done()
     assert seen == []
 
-    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 15, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, datetime(2026, 8, 1, 15, 30, tzinfo=UTC))
     await hass.async_block_till_done()
     assert len(seen) == 1
     assert seen[0]["trigger"] == "today"
 
-    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 15, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, datetime(2026, 8, 1, 15, 30, tzinfo=UTC))
     await hass.async_block_till_done()
     assert len(seen) == 1
     coordinator.async_stop()
