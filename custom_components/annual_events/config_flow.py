@@ -11,11 +11,17 @@ from homeassistant.helpers import selector
 
 from .calculations import LeapDayPolicy
 from .const import (
+    CONF_ADVANCE_NOTICE_DAYS,
+    CONF_EMIT_DAY_OF,
     CONF_LEAP_DAY_POLICY,
     CONF_SHOW_PANEL,
+    CONF_TRIGGER_TIME,
     CONF_UPCOMING_DAYS,
+    DEFAULT_ADVANCE_NOTICE_DAYS,
+    DEFAULT_EMIT_DAY_OF,
     DEFAULT_LEAP_DAY_POLICY,
     DEFAULT_SHOW_PANEL,
+    DEFAULT_TRIGGER_TIME,
     DEFAULT_UPCOMING_DAYS,
     DOMAIN,
     NAME,
@@ -77,6 +83,25 @@ class AnnualEventsOptionsFlow(config_entries.OptionsFlow):
                         CONF_SHOW_PANEL,
                         default=options.get(CONF_SHOW_PANEL, DEFAULT_SHOW_PANEL),
                     ): bool,
+                    vol.Required(
+                        CONF_ADVANCE_NOTICE_DAYS,
+                        default=options.get(CONF_ADVANCE_NOTICE_DAYS, DEFAULT_ADVANCE_NOTICE_DAYS),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=366,
+                            step=1,
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_TRIGGER_TIME,
+                        default=options.get(CONF_TRIGGER_TIME, DEFAULT_TRIGGER_TIME),
+                    ): selector.TimeSelector(),
+                    vol.Required(
+                        CONF_EMIT_DAY_OF,
+                        default=options.get(CONF_EMIT_DAY_OF, DEFAULT_EMIT_DAY_OF),
+                    ): selector.BooleanSelector(),
                 }
             ),
         )

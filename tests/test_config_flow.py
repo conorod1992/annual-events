@@ -38,7 +38,11 @@ async def test_options_flow(hass):
             "leap_day_policy": "mar_1",
             "upcoming_days": 60,
             "show_panel": False,
+            "advance_notice_days": 5,
+            "trigger_time": "08:30:00",
+            "emit_day_of": False,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options["leap_day_policy"] == "mar_1"
+    assert entry.options["advance_notice_days"] == 5

@@ -16,6 +16,7 @@ It keeps one collection-level config entry. Each annual event is an internal rec
 - Optional stable-ID sensor for each enabled event
 - All-day calendar with expanded occurrences across years
 - Structured query and mutation actions
+- Restart-safe advance and day-of events on the Home Assistant event bus
 - Authenticated WebSocket API with administrator-only mutations
 - Read-only LLM tools on Home Assistant versions that support contributed integration tools
 - Privacy-redacted diagnostics; no telemetry or network requests
@@ -51,7 +52,10 @@ Use the integration's **Configure** button to choose:
 
 - the leap-day policy;
 - the period used by the upcoming count sensor;
-- whether the sidebar panel is shown.
+- whether the sidebar panel is shown;
+- advance notice days (one collection-wide interval, 7 by default);
+- the daily local trigger time (09:00 by default);
+- whether day-of events are emitted (enabled by default).
 
 Individual events are always managed from the dedicated panel or actions, never from the options flow.
 
@@ -79,12 +83,19 @@ The integration creates:
 
 - `sensor.next_annual_event`: ISO date state plus bounded metadata for the next enabled event;
 - `sensor.next_important_annual_event`: the same projection for important enabled events;
+- `sensor.next_annual_event_name`: event-name state plus bounded next-occurrence metadata;
+- `sensor.next_important_annual_event_name`: the same text projection for important events;
 - `sensor.upcoming_annual_events`: numeric count in the configured period;
 - `calendar.annual_events`: enabled records as concrete all-day occurrences.
 
 Turning on **Expose individual sensor** creates a date sensor with a unique ID based on the immutable event ID. Renaming an event does not create a new entity. Turning exposure off removes it from runtime while retaining its entity-registry identity for a future re-enable; deleting the record removes the orphaned registry entry.
 
 No sensor contains an unbounded event list.
+
+For example, `states('sensor.next_annual_event_name')` returns the title, while
+`state_attr('sensor.next_annual_event_name', 'occurrence_date')` returns its ISO date.
+The name sensors also expose `event_id`, `date`, `days_until`, `category`,
+`occurrence_number`, and `important` for that one occurrence.
 
 ## Actions
 
@@ -96,6 +107,8 @@ Available actions are:
 - `annual_events.search`
 - `annual_events.get_upcoming`
 - `annual_events.get_between`
+- `annual_events.get_next`
+- `annual_events.get_for_date`
 
 Update and delete require the exact stable event ID. Query actions always return structured response data. Mutation actions optionally return the affected record when the caller requests a response.
 
@@ -141,6 +154,71 @@ occurrences:
     important: true
     days_until: 42
 ```
+
+Get the next enabled occurrence, optionally filtered by category or importance:
+
+```yaml
+action: annual_events.get_next
+data:
+  category: birthday
+  important_only: true
+response_variable: next_event
+```
+
+`next_event.event` contains one serialized occurrence, or is `null` when there is no
+match. Query one local date with the same filters:
+
+```yaml
+action: annual_events.get_for_date
+data:
+  date: "2026-09-14"
+  important_only: false
+response_variable: events_on_date
+```
+
+The response contains `count` and a bounded `occurrences` list in the same format as
+`get_between`.
+
+## Proactive occurrence events
+
+At the configured local trigger time, Annual Events emits `annual_events_occurrence`
+for every enabled occurrence due at the configured advance interval and, when enabled,
+again on its date. Listen without importing any Annual Events Python internals:
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: annual_events_occurrence
+    event_data:
+      trigger: advance
+actions:
+  - action: notify.notify
+    data:
+      message: >-
+        {{ trigger.event.data.name }} is in
+        {{ trigger.event.data.days_until }} days.
+```
+
+Advance payload contract:
+
+```yaml
+event_id: 4df57b76-1f7b-4b6c-80cb-04abb8b8a719
+name: Example birthday
+category: birthday
+occurrence_date: "2026-09-14"
+occurrence_number: 30
+important: true
+trigger: advance
+days_until: 7
+advance_days: 7
+```
+
+Day-of payloads contain the same fields with `trigger: today` and `days_until: 0`,
+and omit `advance_days`. The integration reconciles daily and on startup. A start after
+the trigger time catches up missed work, while a small persisted ledger prevents the
+same logical event from firing again after a restart. The ledger key includes the stable
+event ID, concrete occurrence date, trigger type, and advance interval, so moving an
+event to a new date is not suppressed by its old delivery. Obsolete entries are pruned.
 
 ### Automation examples
 
@@ -212,7 +290,7 @@ Write tools are deliberately not exposed in this release. Creating, changing, or
 
 ## Privacy, storage, and backup
 
-Annual Events makes no network requests and contains no analytics or telemetry. Records are stored locally using Home Assistant's versioned storage under `.storage/annual_events.events`. Normal logs never include whole personal records, and diagnostics contain counts, categories, schema/version information, and options only—not names, aliases, notes, exact dates, or original years.
+Annual Events makes no network requests and contains no analytics or telemetry. Records are stored locally using Home Assistant's versioned storage under `.storage/annual_events.events`; the bounded delivery ledger is stored separately under `.storage/annual_events.deliveries.<entry_id>`. Normal logs never include whole personal records, and diagnostics contain counts, categories, schema/version information, and options only—not names, aliases, notes, exact dates, or original years.
 
 Home Assistant's normal backups include `.storage`. Take a backup before large imports or upgrades and do not edit storage files while Home Assistant is running. If storage cannot be loaded, setup fails without replacing it with an empty collection.
 

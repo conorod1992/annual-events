@@ -23,6 +23,7 @@ from .const import (
     VERSION,
 )
 from .manager import AnnualEventsManager
+from .proactive import ProactiveEventCoordinator
 from .services import async_register_services, async_unregister_services
 from .storage import AnnualEventsStorage
 from .websocket_api import async_register_websocket_commands
@@ -48,6 +49,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AnnualEventsConfigEntry)
 
     entry.runtime_data = manager
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+
+    coordinator = ProactiveEventCoordinator(hass, entry, manager)
+    await coordinator.async_start()
+    entry.async_on_unload(coordinator.async_stop)
 
     if not hass.data.get(_DATA_WEBSOCKET_REGISTERED):
         async_register_websocket_commands(hass)

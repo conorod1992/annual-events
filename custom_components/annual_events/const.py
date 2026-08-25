@@ -15,10 +15,22 @@ SIGNAL_UPDATED: Final = "annual_events_updated"
 CONF_LEAP_DAY_POLICY: Final = "leap_day_policy"
 CONF_UPCOMING_DAYS: Final = "upcoming_days"
 CONF_SHOW_PANEL: Final = "show_panel"
+CONF_ADVANCE_NOTICE_DAYS: Final = "advance_notice_days"
+CONF_TRIGGER_TIME: Final = "trigger_time"
+CONF_EMIT_DAY_OF: Final = "emit_day_of"
 
 DEFAULT_LEAP_DAY_POLICY: Final = "feb_28"
 DEFAULT_UPCOMING_DAYS: Final = 30
 DEFAULT_SHOW_PANEL: Final = True
+DEFAULT_ADVANCE_NOTICE_DAYS: Final = 7
+DEFAULT_TRIGGER_TIME: Final = "09:00:00"
+DEFAULT_EMIT_DAY_OF: Final = True
+
+EVENT_OCCURRENCE: Final = "annual_events_occurrence"
+DELIVERY_STORAGE_KEY: Final = "annual_events.deliveries"
+DELIVERY_STORAGE_VERSION: Final = 1
+DELIVERY_RETENTION_DAYS: Final = 400
+MAX_DELIVERY_LEDGER_ENTRIES: Final = 5000
 
 PANEL_URL: Final = "annual-events"
 PANEL_ELEMENT: Final = "annual-events-panel"

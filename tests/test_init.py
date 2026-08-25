@@ -17,6 +17,8 @@ async def test_setup_and_unload_entry(hass):
     assert hass.services.has_service(DOMAIN, "create_event")
     assert hass.states.get("sensor.next_annual_event") is not None
     assert hass.states.get("sensor.next_important_annual_event") is not None
+    assert hass.states.get("sensor.next_annual_event_name") is not None
+    assert hass.states.get("sensor.next_important_annual_event_name") is not None
     assert hass.states.get("sensor.upcoming_annual_events") is not None
     assert hass.states.get("calendar.annual_events") is not None
 

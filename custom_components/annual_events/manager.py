@@ -161,6 +161,35 @@ class AnnualEventsManager:
             enabled_only=enabled_only,
         )
 
+    def async_get_next(
+        self,
+        today: date,
+        *,
+        policy: LeapDayPolicy,
+        category: str | None = None,
+        important_only: bool = False,
+    ) -> EventOccurrence | None:
+        """Return the next enabled occurrence matching collection filters."""
+        candidates = [
+            self.next_for_event(event, today, policy)
+            for event in self._events.values()
+            if event.enabled
+            and (category is None or event.category == category)
+            and (not important_only or event.important)
+        ]
+        return (
+            min(
+                candidates,
+                key=lambda item: (
+                    item.occurrence_date,
+                    item.name.casefold(),
+                    item.event_id,
+                ),
+            )
+            if candidates
+            else None
+        )
+
     def async_get_occurrences_between(
         self,
         start: date,

@@ -18,12 +18,18 @@
         "data": {
           "leap_day_policy": "Leap-day handling",
           "upcoming_days": "Upcoming count period (days)",
-          "show_panel": "Show Annual Events in the sidebar"
+          "show_panel": "Show Annual Events in the sidebar",
+          "advance_notice_days": "Advance notice (days)",
+          "trigger_time": "Notification trigger time",
+          "emit_day_of": "Emit day-of events"
         },
         "data_description": {
           "leap_day_policy": "How 29 February events are observed in non-leap years.",
           "upcoming_days": "Inclusive horizon used by the upcoming count sensor.",
-          "show_panel": "The management page remains available through the integration when hidden."
+          "show_panel": "The management page remains available through the integration when hidden.",
+          "advance_notice_days": "Emit an advance event this many local calendar days before each occurrence.",
+          "trigger_time": "Local Home Assistant time used for daily event reconciliation.",
+          "emit_day_of": "Emit an event again on the occurrence date."
         }
       }
     }
@@ -41,6 +47,8 @@
     "sensor": {
       "next_annual_event": { "name": "Next annual event" },
       "next_important_annual_event": { "name": "Next important annual event" },
+      "next_annual_event_name": { "name": "Next annual event name" },
+      "next_important_annual_event_name": { "name": "Next important annual event name" },
       "upcoming_annual_events": { "name": "Upcoming annual events" }
     }
   },
@@ -114,6 +122,23 @@
         "start": { "name": "Start date", "description": "Inclusive start date." },
         "end": { "name": "End date", "description": "Inclusive end date." },
         "limit": { "name": "Result limit", "description": "Maximum number of occurrences from 1 to 5000." },
+        "category": { "name": "Category", "description": "Optional exact category filter." },
+        "important_only": { "name": "Important only", "description": "Returns only important events when enabled." }
+      }
+    },
+    "get_next": {
+      "name": "Get next annual event",
+      "description": "Returns the next enabled occurrence as structured response data.",
+      "fields": {
+        "category": { "name": "Category", "description": "Optional exact category filter." },
+        "important_only": { "name": "Important only", "description": "Returns only important events when enabled." }
+      }
+    },
+    "get_for_date": {
+      "name": "Get annual events for date",
+      "description": "Returns enabled occurrences on one local calendar date.",
+      "fields": {
+        "date": { "name": "Date", "description": "Local calendar date to query." },
         "category": { "name": "Category", "description": "Optional exact category filter." },
         "important_only": { "name": "Important only", "description": "Returns only important events when enabled." }
       }
