@@ -65,3 +65,12 @@ get_between:
     limit: { selector: { number: { min: 1, max: 5000, mode: box } } }
     category: { selector: { text: {} } }
     important_only: { selector: { boolean: {} } }
+get_next:
+  fields:
+    category: { selector: { text: {} } }
+    important_only: { selector: { boolean: {} } }
+get_for_date:
+  fields:
+    date: { required: true, selector: { date: {} } }
+    category: { selector: { text: {} } }
+    important_only: { selector: { boolean: {} } }

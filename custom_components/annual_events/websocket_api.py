@@ -71,12 +71,13 @@ def _filter_records(hass: HomeAssistant, msg: dict[str, Any]) -> list[AnnualEven
 def websocket_list(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """List, filter, sort and paginate records."""
     decorated = [event_with_next(hass, event) for event in _filter_records(hass, msg)]
-    key = (
-        (lambda row: (row["name"].casefold(), row["id"]))
-        if msg["sort"] == "name"
-        else (lambda row: (row["next_occurrence"], row["name"].casefold(), row["id"]))
-    )
-    decorated.sort(key=key, reverse=msg["direction"] == "desc")
+
+    def sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+        if msg["sort"] == "name":
+            return (row["name"].casefold(), row["id"])
+        return (row["next_occurrence"], row["name"].casefold(), row["id"])
+
+    decorated.sort(key=sort_key, reverse=msg["direction"] == "desc")
     offset, limit = msg["offset"], msg["limit"]
     connection.send_result(
         msg["id"],

@@ -7,7 +7,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.annual_events.calendar import AnnualEventsCalendar
 from custom_components.annual_events.const import DOMAIN
 from custom_components.annual_events.manager import AnnualEventsManager
-from custom_components.annual_events.sensor import AnnualEventSensor, NextAnnualEventSensor
+from custom_components.annual_events.sensor import (
+    AnnualEventSensor,
+    NextAnnualEventNameSensor,
+    NextAnnualEventSensor,
+)
 
 from .conftest import MemoryStorage, event_data
 
@@ -35,6 +39,33 @@ async def test_aggregate_sensor_state_and_attributes(hass, freezer):
         "occurrence_number": 26,
         "important": True,
     }
+
+    name_sensor = NextAnnualEventNameSensor(hass, manager, important_only=False)
+    assert name_sensor.native_value == "Mum's birthday"
+    assert name_sensor.extra_state_attributes == {
+        "event_id": event.id,
+        "date": "2026-08-07",
+        "occurrence_date": "2026-08-07",
+        "days_until": 6,
+        "category": "birthday",
+        "occurrence_number": 26,
+        "important": True,
+    }
+
+
+async def test_important_name_sensor_filters_and_empty_state(hass, freezer):
+    freezer.move_to("2026-08-01 12:00:00+00:00")
+    manager = await prepare(hass)
+    await manager.async_create_event(event_data(name="Ordinary", day=2))
+    important = await manager.async_create_event(
+        event_data(name="Important", day=3, important=True)
+    )
+    sensor = NextAnnualEventNameSensor(hass, manager, important_only=True)
+    assert sensor.native_value == "Important"
+    assert sensor.extra_state_attributes["event_id"] == important.id
+    await manager.async_update_event(important.id, {"enabled": False})
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
 
 
 async def test_individual_sensor_unique_id_survives_rename(hass, freezer):

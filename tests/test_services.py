@@ -68,3 +68,66 @@ async def test_action_validation_and_unknown_id(hass):
             blocking=True,
             return_response=True,
         )
+
+
+async def test_get_next_and_get_for_date_filters(hass, freezer):
+    freezer.move_to("2026-08-01 12:00:00+00:00")
+    manager = await setup_actions(hass)
+    await manager.async_create_event(
+        {
+            "name": "Ignored disabled",
+            "month": 8,
+            "day": 2,
+            "category": "birthday",
+            "important": True,
+            "enabled": False,
+        }
+    )
+    selected = await manager.async_create_event(
+        {
+            "name": "Selected",
+            "month": 8,
+            "day": 3,
+            "year": 2000,
+            "category": "birthday",
+            "important": True,
+        }
+    )
+    await manager.async_create_event({"name": "Other", "month": 8, "day": 3, "category": "holiday"})
+
+    next_result = await hass.services.async_call(
+        DOMAIN,
+        "get_next",
+        {"category": "birthday", "important_only": True},
+        blocking=True,
+        return_response=True,
+    )
+    assert next_result == {
+        "event": {
+            "event_id": selected.id,
+            "name": "Selected",
+            "category": "birthday",
+            "occurrence_date": "2026-08-03",
+            "occurrence_number": 26,
+            "important": True,
+            "days_until": 2,
+        }
+    }
+    for_date = await hass.services.async_call(
+        DOMAIN,
+        "get_for_date",
+        {"date": "2026-08-03", "category": "birthday", "important_only": True},
+        blocking=True,
+        return_response=True,
+    )
+    assert for_date["count"] == 1
+    assert for_date["occurrences"][0]["event_id"] == selected.id
+
+    empty = await hass.services.async_call(
+        DOMAIN,
+        "get_next",
+        {"category": "missing"},
+        blocking=True,
+        return_response=True,
+    )
+    assert empty == {"event": None}

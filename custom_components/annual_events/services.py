@@ -21,6 +21,8 @@ SERVICE_DELETE = "delete_event"
 SERVICE_SEARCH = "search"
 SERVICE_UPCOMING = "get_upcoming"
 SERVICE_BETWEEN = "get_between"
+SERVICE_NEXT = "get_next"
+SERVICE_FOR_DATE = "get_for_date"
 
 _UPDATE_KEYS = {str(marker.schema) for marker in UPDATE_FIELDS}
 
@@ -106,6 +108,33 @@ async def async_register_services(hass: HomeAssistant) -> None:
             "count": len(records),
         }
 
+    async def get_next(call: ServiceCall) -> dict[str, Any]:
+        today = local_today()
+        occurrence = get_manager(hass).async_get_next(
+            today,
+            policy=get_policy(hass),
+            category=call.data.get("category"),
+            important_only=call.data["important_only"],
+        )
+        return {
+            "event": occurrence.to_dict(relative_to=today) if occurrence else None,
+        }
+
+    async def get_for_date(call: ServiceCall) -> dict[str, Any]:
+        target = parse_date(call.data["date"], "date")
+        records = get_manager(hass).async_get_occurrences_between(
+            target,
+            target,
+            policy=get_policy(hass),
+            category=call.data.get("category"),
+            important_only=call.data["important_only"],
+            enabled_only=True,
+        )
+        return {
+            "count": len(records),
+            "occurrences": [item.to_dict(relative_to=local_today()) for item in records],
+        }
+
     update_service_schema: dict[Any, Any] = {vol.Required("event_id"): cv.string}
     update_service_schema.update(UPDATE_FIELDS)
 
@@ -181,6 +210,31 @@ async def async_register_services(hass: HomeAssistant) -> None:
         ),
         supports_response=SupportsResponse.ONLY,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_NEXT,
+        get_next,
+        schema=vol.Schema(
+            {
+                vol.Optional("category"): cv.string,
+                vol.Optional("important_only", default=False): cv.boolean,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FOR_DATE,
+        get_for_date,
+        schema=vol.Schema(
+            {
+                vol.Required("date"): cv.string,
+                vol.Optional("category"): cv.string,
+                vol.Optional("important_only", default=False): cv.boolean,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -192,5 +246,7 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_SEARCH,
         SERVICE_UPCOMING,
         SERVICE_BETWEEN,
+        SERVICE_NEXT,
+        SERVICE_FOR_DATE,
     ):
         hass.services.async_remove(DOMAIN, service)
