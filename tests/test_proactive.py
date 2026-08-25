@@ -40,7 +40,7 @@ async def prepare(hass, options=None):
 
 
 async def test_advance_day_of_disabled_and_restart_deduplication(hass, freezer):
-    freezer.move_to("2026-08-01 10:00:00+00:00")
+    freezer.move_to("2026-08-01 18:00:00+00:00")
     manager, entry = await prepare(hass)
     advance = await manager.async_create_event(
         event_data(name="Advance", day=8, year=2000, important=True)
@@ -78,7 +78,7 @@ async def test_advance_day_of_disabled_and_restart_deduplication(hass, freezer):
 
 
 async def test_restart_before_trigger_waits_and_after_trigger_catches_up(hass, freezer):
-    freezer.move_to("2026-12-31 08:00:00+00:00")
+    freezer.move_to("2026-12-31 15:00:00+00:00")
     manager, entry = await prepare(hass)
     event = await manager.async_create_event(event_data(name="Year boundary", month=1, day=7))
     seen = []
@@ -89,7 +89,7 @@ async def test_restart_before_trigger_waits_and_after_trigger_catches_up(hass, f
     assert seen == []
     before.async_stop()
 
-    freezer.move_to("2026-12-31 10:00:00+00:00")
+    freezer.move_to("2026-12-31 18:00:00+00:00")
     after = ProactiveEventCoordinator(hass, entry, manager, storage)
     await after.async_start()
     await hass.async_block_till_done()
@@ -100,7 +100,7 @@ async def test_restart_before_trigger_waits_and_after_trigger_catches_up(hass, f
 
 
 async def test_leap_policy_edit_new_occurrence_and_pruning(hass, freezer):
-    freezer.move_to("2026-02-21 10:00:00+00:00")
+    freezer.move_to("2026-02-21 18:00:00+00:00")
     manager, entry = await prepare(hass)
     event = await manager.async_create_event(event_data(name="Leap", month=2, day=29, year=2020))
     old_date = (freezer.time_to_freeze.date() - timedelta(days=401)).isoformat()
@@ -114,7 +114,7 @@ async def test_leap_policy_edit_new_occurrence_and_pruning(hass, freezer):
     assert "obsolete" not in storage.deliveries
 
     await manager.async_update_event(event.id, {"month": 3, "day": 1})
-    freezer.move_to("2026-02-22 10:00:00+00:00")
+    freezer.move_to("2026-02-22 18:00:00+00:00")
     await coordinator.async_reconcile()
     await hass.async_block_till_done()
     assert [item["occurrence_date"] for item in seen] == ["2026-02-28", "2026-03-01"]
@@ -122,7 +122,7 @@ async def test_leap_policy_edit_new_occurrence_and_pruning(hass, freezer):
 
 
 async def test_day_of_can_be_disabled(hass, freezer):
-    freezer.move_to("2026-08-01 10:00:00+00:00")
+    freezer.move_to("2026-08-01 18:00:00+00:00")
     manager, entry = await prepare(hass, {"emit_day_of": False})
     await manager.async_create_event(event_data(name="Today", day=1))
     seen = []
