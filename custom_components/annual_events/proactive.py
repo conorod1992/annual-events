@@ -102,24 +102,28 @@ class ProactiveEventCoordinator:
 
     async def async_start(self) -> None:
         """Load delivery state, attach listeners, and catch up when due."""
-        self._deliveries = await self._storage.async_load()
-        trigger = self.trigger_time
-        self._unsubscribers.append(
-            async_track_time_change(
-                self._hass,
-                self._async_time_changed,
-                hour=trigger.hour,
-                minute=trigger.minute,
-                second=trigger.second,
+        try:
+            self._deliveries = await self._storage.async_load()
+            trigger = self.trigger_time
+            self._unsubscribers.append(
+                async_track_time_change(
+                    self._hass,
+                    self._async_time_changed,
+                    hour=trigger.hour,
+                    minute=trigger.minute,
+                    second=trigger.second,
+                )
             )
-        )
-        self._unsubscribers.append(
-            async_dispatcher_connect(self._hass, SIGNAL_UPDATED, self._events_updated)
-        )
-        now = dt_util.now()
-        await self._async_prune(now.date())
-        if now.time() >= trigger:
-            await self.async_reconcile(now.date())
+            self._unsubscribers.append(
+                async_dispatcher_connect(self._hass, SIGNAL_UPDATED, self._events_updated)
+            )
+            now = dt_util.now()
+            await self._async_prune(now.date())
+            if now.time() >= trigger:
+                await self.async_reconcile(now.date())
+        except Exception:
+            self.async_stop()
+            raise
 
     @callback
     def async_stop(self) -> None:

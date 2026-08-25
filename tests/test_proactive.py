@@ -1,10 +1,14 @@
 """Tests for restart-safe proactive occurrence delivery."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed_exact,
+)
 
-from custom_components.annual_events.const import DOMAIN, EVENT_OCCURRENCE
+from custom_components.annual_events.const import DOMAIN, EVENT_OCCURRENCE, SIGNAL_UPDATED
 from custom_components.annual_events.manager import AnnualEventsManager
 from custom_components.annual_events.proactive import ProactiveEventCoordinator
 
@@ -24,6 +28,19 @@ class MemoryDeliveryStorage:
     async def async_save(self, deliveries):
         self.deliveries = dict(deliveries)
         self.save_count += 1
+
+
+class FailingDeliveryStorage(MemoryDeliveryStorage):
+    """Delivery storage that fails when startup pruning tries to persist."""
+
+    def __init__(self, deliveries=None):
+        super().__init__(deliveries)
+        self.fail_saves = True
+
+    async def async_save(self, deliveries):
+        if self.fail_saves:
+            raise RuntimeError("simulated ledger persistence failure")
+        await super().async_save(deliveries)
 
 
 async def prepare(hass, options=None):
@@ -131,4 +148,64 @@ async def test_day_of_can_be_disabled(hass, freezer):
     await coordinator.async_start()
     await hass.async_block_till_done()
     assert seen == []
+    coordinator.async_stop()
+
+
+async def test_failed_startup_cleans_up_listeners(hass, freezer):
+    freezer.move_to("2026-08-01 00:00:00+00:00")
+    manager, entry = await prepare(hass)
+    await manager.async_create_event(event_data(name="Today", day=1))
+    seen = []
+    hass.bus.async_listen(EVENT_OCCURRENCE, lambda item: seen.append(item.data))
+
+    storage = FailingDeliveryStorage({"obsolete": "2025-01-01"})
+    failed = ProactiveEventCoordinator(
+        hass,
+        entry,
+        manager,
+        storage,
+    )
+    try:
+        await failed.async_start()
+    except RuntimeError as err:
+        assert str(err) == "simulated ledger persistence failure"
+    else:
+        raise AssertionError("startup should fail")
+    assert failed._unsubscribers == []
+
+    storage.fail_saves = False
+    freezer.move_to("2026-08-01 18:00:00+00:00")
+    async_dispatcher_send(hass, SIGNAL_UPDATED)
+    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 16, 0, tzinfo=UTC))
+    await hass.async_block_till_done()
+    assert seen == []
+
+    fresh = ProactiveEventCoordinator(hass, entry, manager, storage)
+    await fresh.async_start()
+    await hass.async_block_till_done()
+    assert len(seen) == 1
+    fresh.async_stop()
+
+
+async def test_configured_trigger_time_uses_scheduled_callback(hass, freezer):
+    freezer.move_to("2026-08-01 00:00:00+00:00")
+    manager, entry = await prepare(hass, {"trigger_time": "08:30:00"})
+    await manager.async_create_event(event_data(name="Today", day=1))
+    seen = []
+    hass.bus.async_listen(EVENT_OCCURRENCE, lambda item: seen.append(item.data))
+    coordinator = ProactiveEventCoordinator(hass, entry, manager, MemoryDeliveryStorage())
+    await coordinator.async_start()
+
+    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 15, 29, tzinfo=UTC))
+    await hass.async_block_till_done()
+    assert seen == []
+
+    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 15, 30, tzinfo=UTC))
+    await hass.async_block_till_done()
+    assert len(seen) == 1
+    assert seen[0]["trigger"] == "today"
+
+    async_fire_time_changed_exact(hass, datetime(2026, 8, 1, 15, 30, tzinfo=UTC))
+    await hass.async_block_till_done()
+    assert len(seen) == 1
     coordinator.async_stop()
