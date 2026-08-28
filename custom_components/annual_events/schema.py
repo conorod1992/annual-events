@@ -5,7 +5,12 @@ from __future__ import annotations
 import voluptuous as vol
 from homeassistant.helpers import config_validation as cv
 
-from .const import BUILT_IN_CATEGORIES
+from .const import BUILT_IN_CATEGORIES, MAX_ADVANCE_NOTICE_DAYS, PROACTIVE_MODES
+
+_PROACTIVE_DAYS = vol.All(
+    cv.ensure_list,
+    [vol.All(vol.Coerce(int), vol.Range(min=1, max=MAX_ADVANCE_NOTICE_DAYS))],
+)
 
 CREATE_FIELDS = {
     vol.Required("name"): cv.string,
@@ -19,6 +24,9 @@ CREATE_FIELDS = {
     vol.Optional("important", default=False): cv.boolean,
     vol.Optional("enabled", default=True): cv.boolean,
     vol.Optional("expose_entity", default=False): cv.boolean,
+    vol.Optional("proactive_mode", default="default"): vol.In(PROACTIVE_MODES),
+    vol.Optional("proactive_advance_days", default=[]): _PROACTIVE_DAYS,
+    vol.Optional("proactive_day_of", default=True): cv.boolean,
 }
 
 UPDATE_FIELDS = {
@@ -33,6 +41,9 @@ UPDATE_FIELDS = {
     vol.Optional("important"): cv.boolean,
     vol.Optional("enabled"): cv.boolean,
     vol.Optional("expose_entity"): cv.boolean,
+    vol.Optional("proactive_mode"): vol.In(PROACTIVE_MODES),
+    vol.Optional("proactive_advance_days"): _PROACTIVE_DAYS,
+    vol.Optional("proactive_day_of"): cv.boolean,
 }
 
 KNOWN_CATEGORIES = list(BUILT_IN_CATEGORIES)

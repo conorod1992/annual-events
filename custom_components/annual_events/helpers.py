@@ -11,7 +11,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .calculations import LeapDayPolicy
-from .const import CONF_LEAP_DAY_POLICY, DEFAULT_LEAP_DAY_POLICY, DOMAIN
+from .const import (
+    CONF_ADVANCE_NOTICE_DAYS,
+    CONF_LEAP_DAY_POLICY,
+    DEFAULT_ADVANCE_NOTICE_DAYS,
+    DEFAULT_LEAP_DAY_POLICY,
+    DOMAIN,
+    MAX_ADVANCE_NOTICE_DAYS,
+)
 from .manager import AnnualEventsManager
 from .models import AnnualEvent, EventNotFoundError, EventValidationError
 
@@ -45,6 +52,44 @@ def parse_date(value: str, field: str) -> date:
         return date.fromisoformat(value)
     except ValueError as err:
         raise HomeAssistantError(f"{field} must be an ISO date (YYYY-MM-DD)") from err
+
+
+def normalize_advance_notice_days(value: Any) -> tuple[int, ...]:
+    """Normalize legacy scalar, text, or list advance offsets."""
+    if value is None:
+        return ()
+    if isinstance(value, bool):
+        raise ValueError("advance notice days must be integers")
+    if isinstance(value, int):
+        raw: list[Any] = [value]
+    elif isinstance(value, str):
+        if not value.strip():
+            return ()
+        raw = [part.strip() for part in value.split(",") if part.strip()]
+    elif isinstance(value, (list, tuple)):
+        raw = list(value)
+    else:
+        raise ValueError("advance notice days must be a number or list")
+    days: set[int] = set()
+    for item in raw:
+        if isinstance(item, bool):
+            raise ValueError("advance notice days must be integers")
+        try:
+            day = int(item)
+        except (TypeError, ValueError) as err:
+            raise ValueError("advance notice days must be integers") from err
+        if not 1 <= day <= MAX_ADVANCE_NOTICE_DAYS:
+            raise ValueError(
+                f"advance notice days must be from 1 to {MAX_ADVANCE_NOTICE_DAYS}"
+            )
+        days.add(day)
+    return tuple(sorted(days, reverse=True))
+
+
+def get_advance_notice_days(entry: ConfigEntry[AnnualEventsManager]) -> tuple[int, ...]:
+    """Return configured global offsets while accepting the old scalar option."""
+    value = entry.options.get(CONF_ADVANCE_NOTICE_DAYS, DEFAULT_ADVANCE_NOTICE_DAYS)
+    return normalize_advance_notice_days(value)
 
 
 def translate_domain_error(err: Exception) -> HomeAssistantError:

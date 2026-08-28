@@ -15,10 +15,8 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_ADVANCE_NOTICE_DAYS,
     CONF_EMIT_DAY_OF,
     CONF_TRIGGER_TIME,
-    DEFAULT_ADVANCE_NOTICE_DAYS,
     DEFAULT_EMIT_DAY_OF,
     DEFAULT_TRIGGER_TIME,
     DELIVERY_RETENTION_DAYS,
@@ -26,11 +24,13 @@ from .const import (
     DELIVERY_STORAGE_VERSION,
     EVENT_OCCURRENCE,
     MAX_DELIVERY_LEDGER_ENTRIES,
+    PROACTIVE_MODE_CUSTOM,
+    PROACTIVE_MODE_OFF,
     SIGNAL_UPDATED,
 )
-from .helpers import get_policy
+from .helpers import get_advance_notice_days, get_policy
 from .manager import AnnualEventsManager
-from .models import EventOccurrence
+from .models import AnnualEvent, EventOccurrence
 
 
 class DeliveryStorageProtocol(Protocol):
@@ -152,6 +152,15 @@ class ProactiveEventCoordinator:
         suffix = str(advance_days) if advance_days is not None else "-"
         return f"{occurrence.event_id}|{occurrence.occurrence_date.isoformat()}|{trigger}|{suffix}"
 
+    def _effective_settings(
+        self, event: AnnualEvent, global_days: tuple[int, ...], global_day_of: bool
+    ) -> tuple[tuple[int, ...], bool]:
+        if event.proactive_mode == PROACTIVE_MODE_OFF:
+            return (), False
+        if event.proactive_mode == PROACTIVE_MODE_CUSTOM:
+            return event.proactive_advance_days, event.proactive_day_of
+        return global_days, global_day_of
+
     async def _async_prune(self, today: date) -> None:
         cutoff = today - timedelta(days=DELIVERY_RETENTION_DAYS)
         pruned = {
@@ -197,33 +206,51 @@ class ProactiveEventCoordinator:
         async with self._lock:
             await self._async_prune(today)
             policy = get_policy(self._hass)
-            advance_days = int(
-                self._entry.options.get(CONF_ADVANCE_NOTICE_DAYS, DEFAULT_ADVANCE_NOTICE_DAYS)
+            global_days = get_advance_notice_days(self._entry)
+            global_day_of = bool(
+                self._entry.options.get(CONF_EMIT_DAY_OF, DEFAULT_EMIT_DAY_OF)
             )
-            advance_date = today + timedelta(days=advance_days)
-            advance = self._manager.async_get_occurrences_between(
-                advance_date,
-                advance_date,
-                policy=policy,
-                enabled_only=True,
-            )
-            for occurrence in advance:
-                await self._async_emit_once(
-                    occurrence,
-                    today=today,
-                    trigger="advance",
-                    advance_days=advance_days,
-                )
-            if self._entry.options.get(CONF_EMIT_DAY_OF, DEFAULT_EMIT_DAY_OF):
-                current = self._manager.async_get_occurrences_between(
-                    today,
-                    today,
+            enabled_events = [event for event in self._manager.async_list_events() if event.enabled]
+            advance_days = set(global_days)
+            for event in enabled_events:
+                if event.proactive_mode == PROACTIVE_MODE_CUSTOM:
+                    advance_days.update(event.proactive_advance_days)
+
+            for days in sorted(advance_days, reverse=True):
+                advance_date = today + timedelta(days=days)
+                occurrences = self._manager.async_get_occurrences_between(
+                    advance_date,
+                    advance_date,
                     policy=policy,
                     enabled_only=True,
                 )
-                for occurrence in current:
+                for occurrence in occurrences:
+                    event = self._manager.async_get_event(occurrence.event_id)
+                    effective_days, _ = self._effective_settings(
+                        event, global_days, global_day_of
+                    )
+                    if days not in effective_days:
+                        continue
                     await self._async_emit_once(
                         occurrence,
                         today=today,
-                        trigger="today",
+                        trigger="advance",
+                        advance_days=days,
                     )
+
+            current = self._manager.async_get_occurrences_between(
+                today,
+                today,
+                policy=policy,
+                enabled_only=True,
+            )
+            for occurrence in current:
+                event = self._manager.async_get_event(occurrence.event_id)
+                _, emit_day_of = self._effective_settings(event, global_days, global_day_of)
+                if not emit_day_of:
+                    continue
+                await self._async_emit_once(
+                    occurrence,
+                    today=today,
+                    trigger="today",
+                )

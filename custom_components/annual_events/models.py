@@ -7,7 +7,13 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from .const import (
+    MAX_ADVANCE_NOTICE_DAYS,
+    PROACTIVE_MODE_DEFAULT,
+    PROACTIVE_MODES,
+)
 
 _CATEGORY_RE = re.compile(r"^[\w][\w -]{0,63}$", re.UNICODE)
 _ICON_RE = re.compile(r"^mdi:[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -60,6 +66,28 @@ def _clean_aliases(value: Any) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _clean_advance_days(value: Any) -> tuple[int, ...]:
+    """Validate and normalize per-event advance offsets."""
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)) or isinstance(value, str):
+        raise EventValidationError("proactive_advance_days must be a list of day offsets")
+    result: set[int] = set()
+    for item in value:
+        if isinstance(item, bool):
+            raise EventValidationError("proactive advance days must be integers")
+        try:
+            day = int(item)
+        except (TypeError, ValueError) as err:
+            raise EventValidationError("proactive advance days must be integers") from err
+        if not 1 <= day <= MAX_ADVANCE_NOTICE_DAYS:
+            raise EventValidationError(
+                f"proactive advance days must be from 1 to {MAX_ADVANCE_NOTICE_DAYS}"
+            )
+        result.add(day)
+    return tuple(sorted(result, reverse=True))
+
+
 def _validate_components(month: Any, day: Any, year: Any) -> tuple[int, int, int | None]:
     if isinstance(month, bool) or not isinstance(month, int) or not 1 <= month <= 12:
         raise EventValidationError("month must be an integer from 1 to 12")
@@ -93,6 +121,9 @@ class AnnualEvent:
     important: bool = False
     enabled: bool = True
     expose_entity: bool = False
+    proactive_mode: str = PROACTIVE_MODE_DEFAULT
+    proactive_advance_days: tuple[int, ...] = ()
+    proactive_day_of: bool = True
     created_at: str = ""
     updated_at: str = ""
 
@@ -113,11 +144,7 @@ class AnnualEvent:
         name = _clean_text(data.get("name"), "name", required=True)
         assert event_id is not None and name is not None
         try:
-            parsed_id = str(uuid4()) if event_id == "generate" else str(event_id)
-            if event_id != "generate":
-                from uuid import UUID
-
-                parsed_id = str(UUID(event_id))
+            parsed_id = str(uuid4()) if event_id == "generate" else str(UUID(event_id))
         except (ValueError, AttributeError) as err:
             raise EventValidationError("id must be a valid UUID") from err
         month, day, year = _validate_components(
@@ -139,11 +166,21 @@ class AnnualEvent:
             except ValueError as err:
                 raise EventValidationError(f"{field} must be an ISO timestamp") from err
         bool_fields: dict[str, bool] = {}
-        for field, default in (("important", False), ("enabled", True), ("expose_entity", False)):
+        for field, default in (
+            ("important", False),
+            ("enabled", True),
+            ("expose_entity", False),
+            ("proactive_day_of", True),
+        ):
             value = data.get(field, default)
             if not isinstance(value, bool):
                 raise EventValidationError(f"{field} must be a boolean")
             bool_fields[field] = value
+        proactive_mode = data.get("proactive_mode", PROACTIVE_MODE_DEFAULT)
+        if not isinstance(proactive_mode, str) or proactive_mode not in PROACTIVE_MODES:
+            raise EventValidationError(
+                f"proactive_mode must be one of: {', '.join(PROACTIVE_MODES)}"
+            )
         return cls(
             id=parsed_id,
             name=name,
@@ -154,6 +191,8 @@ class AnnualEvent:
             aliases=_clean_aliases(data.get("aliases")),
             icon=icon,
             notes=notes,
+            proactive_mode=proactive_mode,
+            proactive_advance_days=_clean_advance_days(data.get("proactive_advance_days")),
             created_at=created_at,
             updated_at=updated_at,
             **bool_fields,
@@ -173,6 +212,7 @@ class AnnualEvent:
         """Serialize to a JSON-safe dictionary."""
         result = asdict(self)
         result["aliases"] = list(self.aliases)
+        result["proactive_advance_days"] = list(self.proactive_advance_days)
         return result
 
     def with_timestamps(self, *, created_at: str, updated_at: str) -> AnnualEvent:
