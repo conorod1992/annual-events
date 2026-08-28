@@ -79,9 +79,7 @@ def normalize_advance_notice_days(value: Any) -> tuple[int, ...]:
         except (TypeError, ValueError) as err:
             raise ValueError("advance notice days must be integers") from err
         if not 1 <= day <= MAX_ADVANCE_NOTICE_DAYS:
-            raise ValueError(
-                f"advance notice days must be from 1 to {MAX_ADVANCE_NOTICE_DAYS}"
-            )
+            raise ValueError(f"advance notice days must be from 1 to {MAX_ADVANCE_NOTICE_DAYS}")
         days.add(day)
     return tuple(sorted(days, reverse=True))
 
