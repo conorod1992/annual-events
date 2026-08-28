@@ -11,19 +11,26 @@ const TEXT = {
   loading: "Loading annual events…",
   enabled: "Enabled",
   exposed: "Entity",
-  important: "Important",
 };
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
+const formatDate = (iso) => {
+  if (!iso) return "";
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" })
+    .format(new Date(year, month - 1, day));
+};
+
 class AnnualEventsPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this.events = [];
-    this.settings = { categories: [], is_admin: false };
+    this.dashboard = { today: [], upcoming: [] };
+    this.settings = { categories: [], options: {}, is_admin: false };
     this.loading = true;
     this.error = "";
     this.filters = { search: "", category: "", enabled: "", important: false, sort: "next_occurrence", direction: "asc" };
@@ -51,7 +58,7 @@ class AnnualEventsPanel extends HTMLElement {
     this.render();
     try {
       this.settings = await this.call({ type: "annual_events/settings" });
-      await this.refresh();
+      await Promise.all([this.refresh(), this.refreshDashboard()]);
     } catch (err) {
       this.error = err?.message || "Could not load Annual Events.";
     } finally {
@@ -77,6 +84,37 @@ class AnnualEventsPanel extends HTMLElement {
     this.render();
   }
 
+  async refreshDashboard() {
+    const days = Math.max(1, Number(this.settings.options?.upcoming_days || 30));
+    const result = await this.call({
+      type: "annual_events/upcoming",
+      days,
+      limit: 50,
+      enabled_only: true,
+    });
+    this.dashboard.today = result.occurrences.filter((item) => item.days_until === 0);
+    this.dashboard.upcoming = result.occurrences.filter((item) => item.days_until > 0).slice(0, 8);
+  }
+
+  overviewTemplate() {
+    const today = this.dashboard.today.length
+      ? this.dashboard.today.map((item) => this.overviewItem(item, true)).join("")
+      : '<div class="overview-empty">Nothing today.</div>';
+    const upcoming = this.dashboard.upcoming.length
+      ? this.dashboard.upcoming.map((item) => this.overviewItem(item, false)).join("")
+      : '<div class="overview-empty">Nothing coming up in the current horizon.</div>';
+    return `<section class="overview" aria-label="Today and upcoming events">
+      <article class="overview-card"><h2>Today</h2><div class="overview-list">${today}</div></article>
+      <article class="overview-card"><h2>Upcoming</h2><div class="overview-list">${upcoming}</div></article>
+    </section>`;
+  }
+
+  overviewItem(item, today) {
+    const number = item.occurrence_number == null ? "" : ` · #${item.occurrence_number}`;
+    const when = today ? "Today" : `${formatDate(item.occurrence_date)} · ${item.days_until} day${item.days_until === 1 ? "" : "s"}`;
+    return `<div class="overview-item"><div><strong>${escapeHtml(item.name)}</strong><div class="overview-meta">${escapeHtml((item.category || "uncategorized").replaceAll("_", " "))}${number}</div></div><span>${escapeHtml(when)}</span></div>`;
+  }
+
   render() {
     const categories = [...new Set([...this.settings.categories, ...this.events.map((e) => e.category).filter(Boolean)])].sort();
     this.shadowRoot.innerHTML = `
@@ -85,14 +123,23 @@ class AnnualEventsPanel extends HTMLElement {
         * { box-sizing:border-box; }
         .wrap { max-width:1120px; margin:auto; padding:24px; }
         header { display:flex; gap:20px; align-items:flex-start; justify-content:space-between; margin-bottom:22px; }
-        h1 { margin:0; font-size:28px; } .subtitle { color:var(--secondary-text-color,#666); margin:5px 0 0; }
+        h1 { margin:0; font-size:28px; } h2 { margin:0 0 12px; font-size:18px; }
+        .subtitle { color:var(--secondary-text-color,#666); margin:5px 0 0; }
         button,.button { border:0; border-radius:10px; padding:10px 15px; cursor:pointer; background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); font:inherit; font-weight:600; }
         button.secondary { background:transparent; color:var(--primary-text-color,#222); border:1px solid var(--divider-color,#ddd); }
         button.danger { background:var(--error-color,#db4437); } button.icon { padding:8px 10px; }
         button:disabled,input:disabled { opacity:.55; cursor:not-allowed; }
+        .overview { display:grid; grid-template-columns:1fr 1.4fr; gap:14px; margin-bottom:18px; }
+        .overview-card { background:var(--card-background-color,#fff); border-radius:14px; box-shadow:var(--ha-card-box-shadow,0 2px 8px #0001); padding:16px; }
+        .overview-list { display:grid; gap:8px; }
+        .overview-item { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:8px 0; border-top:1px solid var(--divider-color,#eee); }
+        .overview-item:first-child { border-top:0; padding-top:0; }
+        .overview-item > span { color:var(--secondary-text-color,#666); font-size:13px; white-space:nowrap; }
+        .overview-meta,.overview-empty { color:var(--secondary-text-color,#666); font-size:13px; margin-top:3px; }
         .filters { display:grid; grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr)); gap:10px; padding:15px; background:var(--card-background-color,#fff); border-radius:14px; box-shadow:var(--ha-card-box-shadow,0 2px 8px #0001); margin-bottom:14px; }
         input,select,textarea { width:100%; padding:10px 11px; border:1px solid var(--divider-color,#ccc); border-radius:9px; color:var(--primary-text-color,#222); background:var(--card-background-color,#fff); font:inherit; }
         label { display:grid; gap:5px; color:var(--secondary-text-color,#666); font-size:13px; }
+        .hint { color:var(--secondary-text-color,#666); font-size:12px; line-height:1.35; }
         .check { display:flex; align-items:center; gap:8px; align-self:center; font-size:14px; color:var(--primary-text-color,#222); }
         .check input { width:auto; }
         .list { display:grid; gap:10px; }
@@ -107,11 +154,13 @@ class AnnualEventsPanel extends HTMLElement {
         .modal { width:min(650px,100%); max-height:92vh; overflow:auto; background:var(--card-background-color,#fff); border-radius:16px; padding:22px; box-shadow:0 12px 48px #0006; }
         .modal h2 { margin-top:0; } .form { display:grid; grid-template-columns:1fr 1fr; gap:13px; } .full { grid-column:1/-1; }
         .checks { display:flex; flex-wrap:wrap; gap:18px; padding:5px 0; } .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
-        @media (max-width:760px) { .wrap{padding:15px} header{align-items:center}.subtitle{display:none}.filters{grid-template-columns:1fr 1fr}.filters .search{grid-column:1/-1}.event{grid-template-columns:1fr auto}.datebox{grid-column:1}.actions{grid-column:2;grid-row:1/3;flex-direction:column}.switches{flex-direction:column}.form{grid-template-columns:1fr}.full{grid-column:auto} }
-        @media (max-width:460px) { .filters{grid-template-columns:1fr}.filters .search{grid-column:auto}.event{grid-template-columns:1fr}.actions{grid-column:1;grid-row:auto;flex-direction:row;justify-content:space-between}.switches{flex-direction:row} }
+        .proactive-custom[hidden] { display:none; }
+        @media (max-width:760px) { .wrap{padding:15px} header{align-items:center}.subtitle{display:none}.overview{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.filters .search{grid-column:1/-1}.event{grid-template-columns:1fr auto}.datebox{grid-column:1}.actions{grid-column:2;grid-row:1/3;flex-direction:column}.switches{flex-direction:column}.form{grid-template-columns:1fr}.full{grid-column:auto} }
+        @media (max-width:460px) { .filters{grid-template-columns:1fr}.filters .search{grid-column:auto}.event{grid-template-columns:1fr}.actions{grid-column:1;grid-row:auto;flex-direction:row;justify-content:space-between}.switches{flex-direction:row}.overview-item{align-items:flex-start;flex-direction:column;gap:4px} }
       </style>
       <div class="wrap">
         <header><div><h1>${TEXT.title}</h1><p class="subtitle">${TEXT.subtitle}</p></div>${this.settings.is_admin ? `<button id="add">＋ ${TEXT.add}</button>` : ""}</header>
+        ${!this.loading && !this.error ? this.overviewTemplate() : ""}
         <section class="filters" aria-label="Event filters">
           <label class="search">Search<input id="search" type="search" value="${escapeHtml(this.filters.search)}" placeholder="${TEXT.search}" /></label>
           <label>Category<select id="category"><option value="">All categories</option>${categories.map((c) => `<option value="${escapeHtml(c)}" ${this.filters.category === c ? "selected" : ""}>${escapeHtml(c.replaceAll("_", " "))}</option>`).join("")}</select></label>
@@ -127,11 +176,16 @@ class AnnualEventsPanel extends HTMLElement {
 
   eventTemplate(event) {
     const number = event.occurrence_number == null ? "" : ` · #${event.occurrence_number}`;
+    const proactive = event.proactive_mode === "off" ? " · proactive off" : event.proactive_mode === "custom" ? " · custom proactive" : "";
     return `<article class="event" data-id="${event.id}">
-      <div><div class="name">${event.important ? '<span class="star" aria-label="Important">★</span>' : ""}${escapeHtml(event.name)}</div><div class="meta">${escapeHtml((event.category || "uncategorized").replaceAll("_", " "))}${event.year ? ` · since ${event.year}` : ""}</div></div>
+      <div><div class="name">${event.important ? '<span class="star" aria-label="Important">★</span>' : ""}${escapeHtml(event.name)}</div><div class="meta">${escapeHtml((event.category || "uncategorized").replaceAll("_", " "))}${event.year ? ` · since ${event.year}` : ""}${proactive}</div></div>
       <div class="datebox"><div class="date">${escapeHtml(event.next_occurrence)}</div><div class="days">${event.days_until === 0 ? "Today" : `${event.days_until} day${event.days_until === 1 ? "" : "s"} away`}${number}</div></div>
       <div class="actions"><div class="switches"><label class="switch"><input data-toggle="enabled" type="checkbox" ${event.enabled ? "checked" : ""} ${this.settings.is_admin ? "" : "disabled"}/>${TEXT.enabled}</label><label class="switch"><input data-toggle="expose_entity" type="checkbox" ${event.expose_entity ? "checked" : ""} ${this.settings.is_admin ? "" : "disabled"}/>${TEXT.exposed}</label></div>${this.settings.is_admin ? `<button class="secondary icon edit" aria-label="Edit ${escapeHtml(event.name)}">Edit</button>` : ""}</div>
     </article>`;
+  }
+
+  async refreshAfterMutation() {
+    await Promise.all([this.refresh(), this.refreshDashboard()]);
   }
 
   bind() {
@@ -144,7 +198,7 @@ class AnnualEventsPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".edit").forEach((button) => button.addEventListener("click", () => this.openForm(this.events.find((e) => e.id === button.closest("article").dataset.id))));
     this.shadowRoot.querySelectorAll("[data-toggle]").forEach((input) => input.addEventListener("change", async () => {
       input.disabled = true;
-      try { await this.call({ type: "annual_events/update", event_id: input.closest("article").dataset.id, [input.dataset.toggle]: input.checked }); await this.refresh(); }
+      try { await this.call({ type: "annual_events/update", event_id: input.closest("article").dataset.id, [input.dataset.toggle]: input.checked }); await this.refreshAfterMutation(); }
       catch (e) { this.error = e.message; this.render(); }
     }));
   }
@@ -152,6 +206,11 @@ class AnnualEventsPanel extends HTMLElement {
   openForm(event = null) {
     const modal = this.shadowRoot.getElementById("modal");
     const aliases = event?.aliases?.join(", ") || "";
+    const proactiveMode = event?.proactive_mode || "default";
+    const proactiveDays = event?.proactive_advance_days?.join(", ") || "";
+    const defaultDays = Array.isArray(this.settings.options?.advance_notice_days)
+      ? this.settings.options.advance_notice_days.join(", ")
+      : (this.settings.options?.advance_notice_days ?? 7);
     modal.innerHTML = `<div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
       <h2 id="dialog-title">${event ? TEXT.edit : TEXT.add}</h2><form id="event-form" class="form">
       <label class="full">Name *<input name="name" required maxlength="120" value="${escapeHtml(event?.name || "")}" autofocus /></label>
@@ -162,10 +221,20 @@ class AnnualEventsPanel extends HTMLElement {
       <label class="full">Aliases, comma separated<input name="aliases" value="${escapeHtml(aliases)}" /></label>
       <label>Icon<input name="icon" placeholder="mdi:calendar-heart" value="${escapeHtml(event?.icon || "")}" /></label>
       <label class="full">Notes<textarea name="notes" rows="3">${escapeHtml(event?.notes || "")}</textarea></label>
+      <label class="full">Proactive events<select name="proactive_mode"><option value="default" ${proactiveMode === "default" ? "selected" : ""}>Use integration defaults</option><option value="custom" ${proactiveMode === "custom" ? "selected" : ""}>Custom for this event</option><option value="off" ${proactiveMode === "off" ? "selected" : ""}>Off for this event</option></select><span class="hint">Integration defaults currently use advance day(s): ${escapeHtml(defaultDays)}.</span></label>
+      <div id="proactive-custom" class="proactive-custom full" ${proactiveMode === "custom" ? "" : "hidden"}>
+        <div class="form">
+          <label class="full">Advance days before event<input name="proactive_advance_days" value="${escapeHtml(proactiveDays)}" placeholder="30, 7, 1" /><span class="hint">Comma-separated. Leave blank for day-of only.</span></label>
+          <label class="check full"><input name="proactive_day_of" type="checkbox" ${event == null || event.proactive_day_of !== false ? "checked" : ""}/> Also emit on the day</label>
+        </div>
+      </div>
       <div class="checks full"><label class="check"><input name="important" type="checkbox" ${event?.important ? "checked" : ""}/> Important</label><label class="check"><input name="enabled" type="checkbox" ${event == null || event.enabled ? "checked" : ""}/> Enabled</label><label class="check"><input name="expose_entity" type="checkbox" ${event?.expose_entity ? "checked" : ""}/> Expose individual sensor</label></div>
       <div id="form-error" class="error full" role="alert"></div></form>
       <div class="modal-actions">${event ? `<button id="delete" class="danger">${TEXT.delete}</button>` : ""}<button id="cancel" class="secondary">${TEXT.cancel}</button><button id="save">${TEXT.save}</button></div>
       </section></div>`;
+    modal.querySelector('[name="proactive_mode"]').addEventListener("change", (e) => {
+      modal.querySelector("#proactive-custom").hidden = e.target.value !== "custom";
+    });
     modal.querySelector("#cancel").addEventListener("click", () => { modal.innerHTML = ""; });
     modal.querySelector(".modal-backdrop").addEventListener("click", (e) => { if (e.target.classList.contains("modal-backdrop")) modal.innerHTML = ""; });
     modal.querySelector("#save").addEventListener("click", () => this.saveForm(event));
@@ -177,6 +246,12 @@ class AnnualEventsPanel extends HTMLElement {
     const form = this.shadowRoot.getElementById("event-form");
     if (!form.reportValidity()) return;
     const data = new FormData(form);
+    const rawDays = data.get("proactive_advance_days").trim();
+    const proactiveDays = rawDays ? [...new Set(rawDays.split(",").map((value) => Number(value.trim())))].sort((a, b) => b - a) : [];
+    if (proactiveDays.some((value) => !Number.isInteger(value) || value < 1 || value > 366)) {
+      this.shadowRoot.getElementById("form-error").textContent = "Advance days must be whole numbers from 1 to 366.";
+      return;
+    }
     const payload = {
       type: event ? "annual_events/update" : "annual_events/create",
       name: data.get("name").trim(), month: Number(data.get("month")), day: Number(data.get("day")),
@@ -184,16 +259,18 @@ class AnnualEventsPanel extends HTMLElement {
       category: data.get("category").trim() || null,
       aliases: data.get("aliases").split(",").map((v) => v.trim()).filter(Boolean),
       icon: data.get("icon").trim() || null, notes: data.get("notes").trim() || null,
+      proactive_mode: data.get("proactive_mode"), proactive_advance_days: proactiveDays,
+      proactive_day_of: data.has("proactive_day_of"),
       important: data.has("important"), enabled: data.has("enabled"), expose_entity: data.has("expose_entity"),
     };
     if (event) payload.event_id = event.id;
-    try { await this.call(payload); this.shadowRoot.getElementById("modal").innerHTML = ""; await this.refresh(); }
+    try { await this.call(payload); this.shadowRoot.getElementById("modal").innerHTML = ""; await this.refreshAfterMutation(); }
     catch (err) { this.shadowRoot.getElementById("form-error").textContent = err.message || "Could not save this event."; }
   }
 
   async deleteEvent(event) {
     if (!window.confirm(`Delete “${event.name}”? This cannot be undone.`)) return;
-    try { await this.call({ type: "annual_events/delete", event_id: event.id }); this.shadowRoot.getElementById("modal").innerHTML = ""; await this.refresh(); }
+    try { await this.call({ type: "annual_events/delete", event_id: event.id }); this.shadowRoot.getElementById("modal").innerHTML = ""; await this.refreshAfterMutation(); }
     catch (err) { this.shadowRoot.getElementById("form-error").textContent = err.message || "Could not delete this event."; }
   }
 }

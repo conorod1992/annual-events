@@ -22,9 +22,20 @@ CONF_EMIT_DAY_OF: Final = "emit_day_of"
 DEFAULT_LEAP_DAY_POLICY: Final = "feb_28"
 DEFAULT_UPCOMING_DAYS: Final = 30
 DEFAULT_SHOW_PANEL: Final = True
+# Kept as a scalar for compatibility with existing options written by v1.0.
 DEFAULT_ADVANCE_NOTICE_DAYS: Final = 7
 DEFAULT_TRIGGER_TIME: Final = "09:00:00"
 DEFAULT_EMIT_DAY_OF: Final = True
+MAX_ADVANCE_NOTICE_DAYS: Final = 366
+
+PROACTIVE_MODE_DEFAULT: Final = "default"
+PROACTIVE_MODE_CUSTOM: Final = "custom"
+PROACTIVE_MODE_OFF: Final = "off"
+PROACTIVE_MODES: Final = (
+    PROACTIVE_MODE_DEFAULT,
+    PROACTIVE_MODE_CUSTOM,
+    PROACTIVE_MODE_OFF,
+)
 
 EVENT_OCCURRENCE: Final = "annual_events_occurrence"
 DELIVERY_STORAGE_KEY: Final = "annual_events.deliveries"

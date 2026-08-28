@@ -25,6 +25,14 @@ create_event:
       selector: { boolean: {} }
     expose_entity:
       selector: { boolean: {} }
+    proactive_mode:
+      selector:
+        select:
+          options: [default, custom, "off"]
+    proactive_advance_days:
+      selector: { text: { multiple: true } }
+    proactive_day_of:
+      selector: { boolean: {} }
 update_event:
   fields:
     event_id:
@@ -41,6 +49,14 @@ update_event:
     important: { selector: { boolean: {} } }
     enabled: { selector: { boolean: {} } }
     expose_entity: { selector: { boolean: {} } }
+    proactive_mode:
+      selector:
+        select:
+          options: [default, custom, "off"]
+    proactive_advance_days:
+      selector: { text: { multiple: true } }
+    proactive_day_of:
+      selector: { boolean: {} }
 delete_event:
   fields:
     event_id:

@@ -26,6 +26,7 @@ from .const import (
     DOMAIN,
     NAME,
 )
+from .helpers import normalize_advance_notice_days
 
 
 class AnnualEventsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -58,11 +59,36 @@ class AnnualEventsOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Manage integration options."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            try:
+                user_input[CONF_ADVANCE_NOTICE_DAYS] = list(
+                    normalize_advance_notice_days(user_input.get(CONF_ADVANCE_NOTICE_DAYS))
+                )
+            except ValueError:
+                errors[CONF_ADVANCE_NOTICE_DAYS] = "invalid_advance_notice_days"
+            else:
+                return self.async_create_entry(title="", data=user_input)
+
         options = self.config_entry.options
+        raw_advance = (
+            user_input.get(CONF_ADVANCE_NOTICE_DAYS)
+            if user_input is not None
+            else options.get(CONF_ADVANCE_NOTICE_DAYS, DEFAULT_ADVANCE_NOTICE_DAYS)
+        )
+        if isinstance(raw_advance, list):
+            advance_default = ", ".join(str(value) for value in raw_advance)
+        else:
+            try:
+                advance_default = ", ".join(
+                    str(value) for value in normalize_advance_notice_days(raw_advance)
+                )
+            except ValueError:
+                advance_default = str(DEFAULT_ADVANCE_NOTICE_DAYS)
+
         return self.async_show_form(
             step_id="init",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -85,15 +111,8 @@ class AnnualEventsOptionsFlow(config_entries.OptionsFlow):
                     ): bool,
                     vol.Required(
                         CONF_ADVANCE_NOTICE_DAYS,
-                        default=options.get(CONF_ADVANCE_NOTICE_DAYS, DEFAULT_ADVANCE_NOTICE_DAYS),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1,
-                            max=366,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
+                        default=advance_default,
+                    ): selector.TextSelector(),
                     vol.Required(
                         CONF_TRIGGER_TIME,
                         default=options.get(CONF_TRIGGER_TIME, DEFAULT_TRIGGER_TIME),
