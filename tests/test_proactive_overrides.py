@@ -101,9 +101,7 @@ async def test_per_event_custom_and_off_override_defaults(hass, freezer):
             proactive_day_of=False,
         )
     )
-    await manager.async_create_event(
-        event_data(name="Off", day=8, proactive_mode="off")
-    )
+    await manager.async_create_event(event_data(name="Off", day=8, proactive_mode="off"))
     today_default = await manager.async_create_event(event_data(name="Today", day=1))
     await manager.async_create_event(
         event_data(
