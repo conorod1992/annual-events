@@ -207,9 +207,7 @@ class ProactiveEventCoordinator:
             await self._async_prune(today)
             policy = get_policy(self._hass)
             global_days = get_advance_notice_days(self._entry)
-            global_day_of = bool(
-                self._entry.options.get(CONF_EMIT_DAY_OF, DEFAULT_EMIT_DAY_OF)
-            )
+            global_day_of = bool(self._entry.options.get(CONF_EMIT_DAY_OF, DEFAULT_EMIT_DAY_OF))
             enabled_events = [event for event in self._manager.async_list_events() if event.enabled]
             advance_days = set(global_days)
             for event in enabled_events:
@@ -226,9 +224,7 @@ class ProactiveEventCoordinator:
                 )
                 for occurrence in occurrences:
                     event = self._manager.async_get_event(occurrence.event_id)
-                    effective_days, _ = self._effective_settings(
-                        event, global_days, global_day_of
-                    )
+                    effective_days, _ = self._effective_settings(event, global_days, global_day_of)
                     if days not in effective_days:
                         continue
                     await self._async_emit_once(
