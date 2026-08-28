@@ -28,7 +28,7 @@ create_event:
     proactive_mode:
       selector:
         select:
-          options: [default, custom, off]
+          options: [default, custom, "off"]
     proactive_advance_days:
       selector: { text: { multiple: true } }
     proactive_day_of:
@@ -52,7 +52,7 @@ update_event:
     proactive_mode:
       selector:
         select:
-          options: [default, custom, off]
+          options: [default, custom, "off"]
     proactive_advance_days:
       selector: { text: { multiple: true } }
     proactive_day_of:
