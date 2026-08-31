@@ -1,6 +1,7 @@
 """Tests for contributed read-only LLM tools."""
 
 import pytest
+import voluptuous as vol
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.llm import LLMContext, ToolInput
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -61,6 +62,11 @@ async def test_llm_read_tools(hass, freezer):
         context,
     )
     assert between["count"] == 1
+
+    with pytest.raises(vol.Invalid, match="expected integer"):
+        tools["get_upcoming_annual_events"].parameters(
+            {"days": 7.9, "important_only": False, "limit": 10}
+        )
 
     with pytest.raises(HomeAssistantError):
         await tools["get_annual_events_between"].async_call(
