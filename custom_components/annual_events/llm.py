@@ -15,6 +15,7 @@ from homeassistant.helpers.llm import LLMContext, ToolInput
 
 from .const import MAX_BETWEEN_DAYS, MAX_SEARCH_LIMIT
 from .helpers import event_with_next, get_manager, get_policy, local_today, parse_date
+from .schema import coerce_integer
 
 
 class SearchAnnualEventsTool(llm.Tool):
@@ -26,7 +27,7 @@ class SearchAnnualEventsTool(llm.Tool):
         {
             vol.Required("query"): cv.string,
             vol.Optional("limit", default=10): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=MAX_SEARCH_LIMIT)
+                coerce_integer, vol.Range(min=1, max=MAX_SEARCH_LIMIT)
             ),
         }
     )
@@ -51,12 +52,12 @@ class UpcomingAnnualEventsTool(llm.Tool):
     parameters = vol.Schema(
         {
             vol.Optional("days", default=31): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=MAX_BETWEEN_DAYS)
+                coerce_integer, vol.Range(min=0, max=MAX_BETWEEN_DAYS)
             ),
             vol.Optional("important_only", default=False): cv.boolean,
             vol.Optional("category"): cv.string,
             vol.Optional("limit", default=50): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=MAX_SEARCH_LIMIT)
+                coerce_integer, vol.Range(min=1, max=MAX_SEARCH_LIMIT)
             ),
         }
     )
@@ -92,7 +93,7 @@ class BetweenAnnualEventsTool(llm.Tool):
             vol.Optional("important_only", default=False): cv.boolean,
             vol.Optional("category"): cv.string,
             vol.Optional("limit", default=100): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=MAX_SEARCH_LIMIT)
+                coerce_integer, vol.Range(min=1, max=MAX_SEARCH_LIMIT)
             ),
         }
     )
@@ -114,8 +115,9 @@ class BetweenAnnualEventsTool(llm.Tool):
             important_only=args["important_only"],
             category=args.get("category"),
         )
+        today = local_today()
         return {
-            "occurrences": [item.to_dict(relative_to=local_today()) for item in records],
+            "occurrences": [item.to_dict(relative_to=today) for item in records],
             "count": len(records),
         }
 
