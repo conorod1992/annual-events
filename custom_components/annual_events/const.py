@@ -42,6 +42,7 @@ DELIVERY_STORAGE_KEY: Final = "annual_events.deliveries"
 DELIVERY_STORAGE_VERSION: Final = 1
 DELIVERY_RETENTION_DAYS: Final = 400
 MAX_DELIVERY_LEDGER_ENTRIES: Final = 5000
+MAX_PROACTIVE_CATCHUP_DAYS: Final = 31
 
 PANEL_URL: Final = "annual-events"
 PANEL_ELEMENT: Final = "annual-events-panel"
