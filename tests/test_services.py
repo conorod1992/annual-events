@@ -83,9 +83,7 @@ async def test_mutation_actions_require_admin_user_context(
     hass, hass_ws_client, hass_read_only_access_token
 ):
     manager = await setup_actions(hass)
-    existing = await manager.async_create_event(
-        {"name": "Protected event", "month": 8, "day": 7}
-    )
+    existing = await manager.async_create_event({"name": "Protected event", "month": 8, "day": 7})
     read_only = await hass_ws_client(hass, hass_read_only_access_token)
 
     for service, service_data in (
