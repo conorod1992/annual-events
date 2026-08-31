@@ -40,8 +40,8 @@ async def async_setup_entry(
     ]
     async_add_entities(aggregates)
     active: dict[str, AnnualEventSensor] = {}
-    reconcile_task: asyncio.Task[None] | None = None
-    reconcile_pending = False
+    reconcile_lock = asyncio.Lock()
+    reconcile_tasks: set[asyncio.Task[None]] = set()
     stopped = False
 
     async def _async_reconcile_once() -> None:
@@ -83,43 +83,37 @@ async def async_setup_entry(
             if event_entity.hass is not None:
                 event_entity.async_write_ha_state()
 
-    async def _async_reconcile_loop() -> None:
-        nonlocal reconcile_pending, reconcile_task
-        try:
-            while reconcile_pending and not stopped:
-                reconcile_pending = False
-                await _async_reconcile_once()
-        finally:
-            reconcile_task = None
+    async def _async_reconcile_serialized() -> None:
+        async with reconcile_lock:
+            if stopped:
+                return
+            await _async_reconcile_once()
 
     @callback
     def reconcile() -> None:
-        """Coalesce updates into one ordered reconciliation task."""
-        nonlocal reconcile_pending, reconcile_task
+        """Queue an owned reconciliation task; the lock prevents overlap."""
         if stopped:
             return
-        reconcile_pending = True
-        if reconcile_task is None:
-            reconcile_task = hass.async_create_task(
-                _async_reconcile_loop(), "annual_events_reconcile_sensors"
-            )
+        task = hass.async_create_task(
+            _async_reconcile_serialized(), "annual_events_reconcile_sensors"
+        )
+        reconcile_tasks.add(task)
+        task.add_done_callback(reconcile_tasks.discard)
 
     unsubscribe = async_dispatcher_connect(hass, SIGNAL_UPDATED, reconcile)
 
     @callback
     def async_stop() -> None:
-        """Stop accepting updates and cancel any in-flight reconciliation."""
-        nonlocal stopped, reconcile_pending
+        """Stop accepting updates and cancel queued or in-flight reconciliation."""
+        nonlocal stopped
         stopped = True
-        reconcile_pending = False
         unsubscribe()
-        if reconcile_task is not None:
-            reconcile_task.cancel()
+        for task in tuple(reconcile_tasks):
+            task.cancel()
+        reconcile_tasks.clear()
 
     entry.async_on_unload(async_stop)
-    reconcile()
-    if reconcile_task is not None:
-        await reconcile_task
+    await _async_reconcile_serialized()
 
 
 class AnnualEventsBaseSensor(SensorEntity):
