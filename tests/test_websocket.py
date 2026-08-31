@@ -4,9 +4,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.annual_events.const import DOMAIN
 from custom_components.annual_events.manager import AnnualEventsManager
+from custom_components.annual_events.models import AnnualEvent
 from custom_components.annual_events.websocket_api import async_register_websocket_commands
 
-from .conftest import MemoryStorage
+from .conftest import MemoryStorage, event_data
 
 
 async def setup_websocket(hass, hass_ws_client, token=None):
@@ -80,3 +81,27 @@ async def test_websocket_validation_unknown_and_admin_restriction(
     denied = await read_only.receive_json()
     assert denied["success"] is False
     assert denied["error"]["code"] == "unauthorized"
+
+
+async def test_websocket_mutations_fail_safely_when_storage_is_malformed(hass, hass_ws_client):
+    client, _ = await setup_websocket(hass, hass_ws_client)
+    valid = AnnualEvent.create(event_data(name="Valid event")).to_dict()
+    malformed = {"bad": "record"}
+    storage = MemoryStorage([valid, malformed])
+    blocked_manager = AnnualEventsManager(storage, lambda: None)
+    await blocked_manager.async_load()
+    hass.config_entries.async_entries(DOMAIN)[0].runtime_data = blocked_manager
+
+    for request in (
+        {"type": "annual_events/create", "name": "New event", "month": 1, "day": 1},
+        {"type": "annual_events/update", "event_id": valid["id"], "name": "Changed event"},
+        {"type": "annual_events/delete", "event_id": valid["id"]},
+    ):
+        await client.send_json_auto_id(request)
+        response = await client.receive_json()
+        assert response["success"] is False
+        assert response["error"]["code"] == "home_assistant_error"
+        assert "disabled to prevent data loss" in response["error"]["message"]
+
+    assert storage.records == [valid, malformed]
+    assert storage.save_count == 0
