@@ -67,24 +67,20 @@ def _clean_aliases(value: Any) -> tuple[str, ...]:
 
 
 def _clean_advance_days(value: Any) -> tuple[int, ...]:
-    """Validate and normalize per-event advance offsets."""
+    """Validate and normalize persisted per-event advance offsets."""
     if value is None:
         return ()
     if not isinstance(value, (list, tuple)) or isinstance(value, str):
         raise EventValidationError("proactive_advance_days must be a list of day offsets")
     result: set[int] = set()
     for item in value:
-        if isinstance(item, bool):
+        if isinstance(item, bool) or not isinstance(item, int):
             raise EventValidationError("proactive advance days must be integers")
-        try:
-            day = int(item)
-        except (TypeError, ValueError) as err:
-            raise EventValidationError("proactive advance days must be integers") from err
-        if not 1 <= day <= MAX_ADVANCE_NOTICE_DAYS:
+        if not 1 <= item <= MAX_ADVANCE_NOTICE_DAYS:
             raise EventValidationError(
                 f"proactive advance days must be from 1 to {MAX_ADVANCE_NOTICE_DAYS}"
             )
-        result.add(day)
+        result.add(item)
     return tuple(sorted(result, reverse=True))
 
 
@@ -144,7 +140,7 @@ class AnnualEvent:
         name = _clean_text(data.get("name"), "name", required=True)
         assert event_id is not None and name is not None
         try:
-            parsed_id = str(uuid4()) if event_id == "generate" else str(UUID(event_id))
+            parsed_id = str(UUID(event_id))
         except (ValueError, AttributeError) as err:
             raise EventValidationError("id must be a valid UUID") from err
         month, day, year = _validate_components(

@@ -24,7 +24,8 @@ With Annual Events you can:
 - see the next event, next important event, and number of upcoming events as sensors;
 - optionally create a separate sensor for an individual event;
 - choose how 29 February events should behave in non-leap years;
-- fire Home Assistant events a set number of days before each date and/or on the date itself;
+- fire Home Assistant events at one or more configured day offsets before each date and/or on the date itself;
+- override proactive reminder settings for individual events, or turn them off for one event;
 - use Home Assistant actions to create, update, delete, search, and query events;
 - ask supported LLM-based Home Assistant assistants about your annual events.
 
@@ -91,6 +92,7 @@ From there you can:
 - enable or disable events;
 - mark events as important;
 - choose whether an event should have its own sensor;
+- choose whether an event uses the integration's proactive defaults, custom reminder timing, or no proactive events;
 - search by name, alias, category, or notes;
 - filter and sort the list.
 
@@ -146,13 +148,13 @@ The default is **30 days**.
 
 Turn the dedicated sidebar page on or off.
 
-Hiding the sidebar item does not delete your events or disable the integration.
+Hiding the sidebar item does not delete your events or disable the integration, its entities, actions, or occurrence events.
 
-### Advance notice
+### Advance notice days
 
-Choose how many days before an annual event Home Assistant should fire an `annual_events_occurrence` event.
+Choose one or more local-calendar day offsets before an annual event when Home Assistant should fire an `annual_events_occurrence` event.
 
-The default is **7 days**.
+Enter comma-separated whole numbers such as `30, 7, 1`. The default is **7 days**.
 
 This does not send a notification by itself. It gives your Home Assistant automations an event they can react to.
 
@@ -167,6 +169,16 @@ The default is **09:00**.
 When enabled, Annual Events also fires an `annual_events_occurrence` event on the day of the annual event.
 
 This is enabled by default.
+
+### Per-event proactive settings
+
+Each event can either:
+
+- use the integration-wide advance/day-of settings;
+- use its own custom advance-day list and day-of choice; or
+- turn proactive occurrence events off for that event.
+
+These overrides are available when adding or editing an event in the Annual Events page and through the create/update actions.
 
 ## Home Assistant entities
 
@@ -225,14 +237,16 @@ annual_events_occurrence
 
 This can happen:
 
-- a configured number of days before an annual event; and
+- at any configured advance interval before an annual event; and
 - on the date itself, if day-of events are enabled.
+
+Individual events can use the integration defaults, custom advance/day-of settings, or disable proactive occurrence events entirely.
 
 This is often the easiest way to build notifications because Annual Events handles the yearly date calculation for you.
 
 ### Example: notify in advance
 
-This example sends a notification when an event reaches the configured advance-notice date:
+This example sends a notification when an event reaches one of its configured advance-notice dates:
 
 ```yaml
 alias: Annual event advance reminder
@@ -267,7 +281,7 @@ advance_days: 7
 
 On the day itself, `trigger` is `today` and `days_until` is `0`.
 
-Annual Events remembers occurrence events it has already fired, so restarting Home Assistant should not cause the same reminder to be fired repeatedly. If Home Assistant starts after the configured trigger time, Annual Events also performs a catch-up check for work that was missed while Home Assistant was offline.
+Annual Events remembers occurrence events it has already fired, so restarting Home Assistant should not cause the same reminder to be fired repeatedly. If Home Assistant was offline across one or more daily checks, startup catch-up can reconcile up to the most recent **31 local due dates**. Older missed checks are deliberately not replayed in bulk.
 
 ## Actions
 
@@ -283,6 +297,8 @@ Annual Events provides these Home Assistant actions:
 - `annual_events.get_between`
 - `annual_events.get_next`
 - `annual_events.get_for_date`
+
+Create, update, and delete calls made on behalf of a Home Assistant user require an administrator account. Home Assistant system/automation calls without a user context remain supported. The query actions are read-only.
 
 The query actions return response data, which means their results can be stored in a `response_variable` and used later in the same script or automation.
 
@@ -601,6 +617,7 @@ python -m pip install ".[dev]"
 
 ruff format --check .
 ruff check .
+node --check custom_components/annual_events/frontend/annual-events-panel.js
 mypy custom_components/annual_events
 pytest --cov=custom_components.annual_events
 ```

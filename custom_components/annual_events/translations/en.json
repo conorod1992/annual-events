@@ -19,17 +19,17 @@
           "leap_day_policy": "Leap-day handling",
           "upcoming_days": "Upcoming count period (days)",
           "show_panel": "Show Annual Events in the sidebar",
-          "advance_notice_days": "Advance notice (days)",
-          "trigger_time": "Notification trigger time",
-          "emit_day_of": "Emit day-of events"
+          "advance_notice_days": "Advance notice days",
+          "trigger_time": "Daily occurrence check time",
+          "emit_day_of": "Also emit on the event day"
         },
         "data_description": {
           "leap_day_policy": "How 29 February events are observed in non-leap years.",
           "upcoming_days": "Inclusive horizon used by the upcoming count sensor.",
-          "show_panel": "The management page remains available through the integration when hidden.",
-          "advance_notice_days": "Emit an advance event this many local calendar days before each occurrence.",
-          "trigger_time": "Local Home Assistant time used for daily event reconciliation.",
-          "emit_day_of": "Emit an event again on the occurrence date."
+          "show_panel": "Hiding the sidebar page does not disable your events, entities, actions, or occurrence events.",
+          "advance_notice_days": "Comma-separated local calendar day offsets, for example 30, 7, 1.",
+          "trigger_time": "Local Home Assistant time used for the daily occurrence check.",
+          "emit_day_of": "Emit an occurrence event again on the event date."
         }
       }
     }
@@ -67,7 +67,10 @@
         "notes": { "name": "Notes", "description": "Optional private notes stored locally." },
         "important": { "name": "Important", "description": "Marks the event as important." },
         "enabled": { "name": "Enabled", "description": "Includes the event in active queries and entities." },
-        "expose_entity": { "name": "Expose individual sensor", "description": "Creates a stable sensor for this event while it is enabled." }
+        "expose_entity": { "name": "Expose individual sensor", "description": "Creates a stable sensor for this event while it is enabled." },
+        "proactive_mode": { "name": "Proactive events", "description": "Use the integration defaults, custom settings for this event, or turn proactive events off." },
+        "proactive_advance_days": { "name": "Custom advance days", "description": "Whole-number day offsets used when proactive events are set to custom." },
+        "proactive_day_of": { "name": "Custom day-of event", "description": "When using custom proactive settings, also emit on the event day." }
       }
     },
     "update_event": {
@@ -85,7 +88,10 @@
         "notes": { "name": "Notes", "description": "Private notes, or null to clear them." },
         "important": { "name": "Important", "description": "Whether the event is important." },
         "enabled": { "name": "Enabled", "description": "Whether the event participates in active results." },
-        "expose_entity": { "name": "Expose individual sensor", "description": "Whether an enabled event has its own sensor." }
+        "expose_entity": { "name": "Expose individual sensor", "description": "Whether an enabled event has its own sensor." },
+        "proactive_mode": { "name": "Proactive events", "description": "Use the integration defaults, custom settings for this event, or turn proactive events off." },
+        "proactive_advance_days": { "name": "Custom advance days", "description": "Whole-number day offsets used when proactive events are set to custom." },
+        "proactive_day_of": { "name": "Custom day-of event", "description": "When using custom proactive settings, also emit on the event day." }
       }
     },
     "delete_event": {

@@ -10,7 +10,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import BUILT_IN_CATEGORIES, MAX_ADVANCE_NOTICE_DAYS, PROACTIVE_MODES
 
 
-def _coerce_integer(value: Any) -> int:
+def coerce_integer(value: Any) -> int:
     """Accept integer values and integer strings without truncating fractions."""
     if isinstance(value, bool):
         raise vol.Invalid("expected integer")
@@ -26,14 +26,14 @@ def _coerce_integer(value: Any) -> int:
 
 _PROACTIVE_DAYS = vol.All(
     cv.ensure_list,
-    [vol.All(_coerce_integer, vol.Range(min=1, max=MAX_ADVANCE_NOTICE_DAYS))],
+    [vol.All(coerce_integer, vol.Range(min=1, max=MAX_ADVANCE_NOTICE_DAYS))],
 )
 
 CREATE_FIELDS = {
     vol.Required("name"): cv.string,
-    vol.Required("month"): vol.All(_coerce_integer, vol.Range(min=1, max=12)),
-    vol.Required("day"): vol.All(_coerce_integer, vol.Range(min=1, max=31)),
-    vol.Optional("year"): vol.Any(None, vol.All(_coerce_integer, vol.Range(min=1, max=9999))),
+    vol.Required("month"): vol.All(coerce_integer, vol.Range(min=1, max=12)),
+    vol.Required("day"): vol.All(coerce_integer, vol.Range(min=1, max=31)),
+    vol.Optional("year"): vol.Any(None, vol.All(coerce_integer, vol.Range(min=1, max=9999))),
     vol.Optional("category"): vol.Any(None, cv.string),
     vol.Optional("aliases", default=[]): vol.All(cv.ensure_list, [cv.string]),
     vol.Optional("icon"): vol.Any(None, cv.icon),
@@ -48,9 +48,9 @@ CREATE_FIELDS = {
 
 UPDATE_FIELDS = {
     vol.Optional("name"): cv.string,
-    vol.Optional("month"): vol.All(_coerce_integer, vol.Range(min=1, max=12)),
-    vol.Optional("day"): vol.All(_coerce_integer, vol.Range(min=1, max=31)),
-    vol.Optional("year"): vol.Any(None, vol.All(_coerce_integer, vol.Range(min=1, max=9999))),
+    vol.Optional("month"): vol.All(coerce_integer, vol.Range(min=1, max=12)),
+    vol.Optional("day"): vol.All(coerce_integer, vol.Range(min=1, max=31)),
+    vol.Optional("year"): vol.Any(None, vol.All(coerce_integer, vol.Range(min=1, max=9999))),
     vol.Optional("category"): vol.Any(None, cv.string),
     vol.Optional("aliases"): vol.All(cv.ensure_list, [cv.string]),
     vol.Optional("icon"): vol.Any(None, cv.icon),

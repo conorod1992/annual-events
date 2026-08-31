@@ -230,8 +230,7 @@ class AnnualEventsPanel extends HTMLElement {
     this.shadowRoot.getElementById("add")?.addEventListener("click", () => this.openForm());
     this.shadowRoot.getElementById("retry")?.addEventListener("click", () => this.load());
     this.shadowRoot.getElementById("load-more")?.addEventListener("click", () => this.loadMore());
-    const updateFilter = async (key, value) => {
-      this.filters[key] = value;
+    const refreshFilters = async () => {
       this.error = "";
       this.loadingMore = false;
       try {
@@ -241,9 +240,14 @@ class AnnualEventsPanel extends HTMLElement {
         this.render();
       }
     };
+    const updateFilter = async (key, value) => {
+      this.filters[key] = value;
+      await refreshFilters();
+    };
     this.shadowRoot.getElementById("search")?.addEventListener("input", (e) => {
+      this.filters.search = e.target.value.trim();
       clearTimeout(this._timer);
-      this._timer = setTimeout(() => updateFilter("search", e.target.value.trim()), 250);
+      this._timer = setTimeout(() => refreshFilters(), 250);
     });
     for (const key of ["category", "enabled", "sort"]) this.shadowRoot.getElementById(key)?.addEventListener("change", (e) => updateFilter(key, e.target.value));
     this.shadowRoot.getElementById("important")?.addEventListener("change", (e) => updateFilter("important", e.target.checked));
