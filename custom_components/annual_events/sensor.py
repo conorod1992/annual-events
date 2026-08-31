@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import Any
 
@@ -39,30 +40,37 @@ async def async_setup_entry(
     ]
     async_add_entities(aggregates)
     active: dict[str, AnnualEventSensor] = {}
+    reconcile_task: asyncio.Task[None] | None = None
+    reconcile_pending = False
+    stopped = False
 
-    @callback
-    def reconcile() -> None:
-        hass.async_create_task(_async_reconcile(), "annual_events_reconcile_sensors")
-
-    async def _async_reconcile() -> None:
+    async def _async_reconcile_once() -> None:
+        events = manager.async_list_events()
+        existing_ids = {event.id for event in events}
         desired = {
-            event.id: event
-            for event in manager.async_list_events()
-            if event.enabled and event.expose_entity
+            event.id: event for event in events if event.enabled and event.expose_entity
         }
+
         for event_id, entity in list(active.items()):
             if event_id not in desired:
                 active.pop(event_id)
                 await entity.async_remove()
-                # A deleted record should not leave an orphan. Exposure/enable toggles
-                # retain the registry entry so re-enabling preserves its identity.
-                try:
-                    manager.async_get_event(event_id)
-                except KeyError:
-                    registry = er.async_get(hass)
-                    entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"event_{event_id}")
-                    if entity_id:
-                        registry.async_remove(entity_id)
+
+        # Registry rows are retained when an event is merely disabled or unexposed so
+        # re-enabling preserves entity identity. Once the backing event is deleted,
+        # however, remove its registry row even if it was already inactive.
+        registry = er.async_get(hass)
+        for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if (
+                registry_entry.domain != "sensor"
+                or registry_entry.platform != DOMAIN
+                or not registry_entry.unique_id.startswith("event_")
+            ):
+                continue
+            event_id = registry_entry.unique_id.removeprefix("event_")
+            if event_id not in existing_ids:
+                registry.async_remove(registry_entry.entity_id)
+
         new_entities: list[AnnualEventSensor] = []
         for event_id in desired.keys() - active.keys():
             entity = AnnualEventSensor(hass, manager, event_id)
@@ -77,8 +85,43 @@ async def async_setup_entry(
             if event_entity.hass is not None:
                 event_entity.async_write_ha_state()
 
-    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_UPDATED, reconcile))
-    await _async_reconcile()
+    async def _async_reconcile_loop() -> None:
+        nonlocal reconcile_pending, reconcile_task
+        try:
+            while reconcile_pending and not stopped:
+                reconcile_pending = False
+                await _async_reconcile_once()
+        finally:
+            reconcile_task = None
+
+    @callback
+    def reconcile() -> None:
+        """Coalesce updates into one ordered reconciliation task."""
+        nonlocal reconcile_pending, reconcile_task
+        if stopped:
+            return
+        reconcile_pending = True
+        if reconcile_task is None:
+            reconcile_task = hass.async_create_task(
+                _async_reconcile_loop(), "annual_events_reconcile_sensors"
+            )
+
+    unsubscribe = async_dispatcher_connect(hass, SIGNAL_UPDATED, reconcile)
+
+    @callback
+    def async_stop() -> None:
+        """Stop accepting updates and cancel any in-flight reconciliation."""
+        nonlocal stopped, reconcile_pending
+        stopped = True
+        reconcile_pending = False
+        unsubscribe()
+        if reconcile_task is not None:
+            reconcile_task.cancel()
+
+    entry.async_on_unload(async_stop)
+    reconcile()
+    if reconcile_task is not None:
+        await reconcile_task
 
 
 class AnnualEventsBaseSensor(SensorEntity):
