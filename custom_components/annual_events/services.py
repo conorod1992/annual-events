@@ -9,11 +9,12 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import DOMAIN, MAX_BETWEEN_DAYS, MAX_BETWEEN_RESULTS, MAX_SEARCH_LIMIT
 from .helpers import event_with_next, get_manager, get_policy, local_today, parse_date
 from .models import EventNotFoundError, EventValidationError
-from .schema import CREATE_FIELDS, UPDATE_FIELDS
+from .schema import CREATE_FIELDS, UPDATE_FIELDS, coerce_integer
 
 SERVICE_CREATE = "create_event"
 SERVICE_UPDATE = "update_event"
@@ -103,8 +104,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
             important_only=call.data["important_only"],
             enabled_only=True,
         )
+        today = local_today()
         return {
-            "occurrences": [item.to_dict(relative_to=local_today()) for item in records],
+            "occurrences": [item.to_dict(relative_to=today) for item in records],
             "count": len(records),
         }
 
@@ -130,29 +132,33 @@ async def async_register_services(hass: HomeAssistant) -> None:
             important_only=call.data["important_only"],
             enabled_only=True,
         )
+        today = local_today()
         return {
             "count": len(records),
-            "occurrences": [item.to_dict(relative_to=local_today()) for item in records],
+            "occurrences": [item.to_dict(relative_to=today) for item in records],
         }
 
     update_service_schema: dict[Any, Any] = {vol.Required("event_id"): cv.string}
     update_service_schema.update(UPDATE_FIELDS)
 
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_CREATE,
         create,
         schema=vol.Schema(CREATE_FIELDS),
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_UPDATE,
         update,
         schema=vol.Schema(update_service_schema),
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_DELETE,
         delete,
@@ -169,7 +175,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 vol.Optional("category"): cv.string,
                 vol.Optional("enabled"): cv.boolean,
                 vol.Optional("limit", default=25): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=MAX_SEARCH_LIMIT)
+                    coerce_integer, vol.Range(min=1, max=MAX_SEARCH_LIMIT)
                 ),
             }
         ),
@@ -182,10 +188,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Optional("days", default=30): vol.All(
-                    vol.Coerce(int), vol.Range(min=0, max=MAX_BETWEEN_DAYS)
+                    coerce_integer, vol.Range(min=0, max=MAX_BETWEEN_DAYS)
                 ),
                 vol.Optional("limit", default=100): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=MAX_SEARCH_LIMIT)
+                    coerce_integer, vol.Range(min=1, max=MAX_SEARCH_LIMIT)
                 ),
                 vol.Optional("category"): cv.string,
                 vol.Optional("important_only", default=False): cv.boolean,
@@ -202,7 +208,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 vol.Required("start"): cv.string,
                 vol.Required("end"): cv.string,
                 vol.Optional("limit", default=500): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=MAX_BETWEEN_RESULTS)
+                    coerce_integer, vol.Range(min=1, max=MAX_BETWEEN_RESULTS)
                 ),
                 vol.Optional("category"): cv.string,
                 vol.Optional("important_only", default=False): cv.boolean,
