@@ -1,9 +1,12 @@
 """End-to-end config entry setup and unload tests."""
 
+from unittest.mock import AsyncMock
+
 from homeassistant.components import frontend
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.annual_events import async_unload_entry
 from custom_components.annual_events.const import DOMAIN, PANEL_URL
 
 
@@ -78,3 +81,74 @@ async def test_setup_and_unload_entry(hass):
     await hass.async_block_till_done()
     assert not frontend.async_panel_exists(hass, PANEL_URL)
     assert not hass.services.has_service(DOMAIN, "create_event")
+
+
+async def test_delete_unexposed_event_removes_orphan_registry_entry(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    created = await hass.services.async_call(
+        DOMAIN,
+        "create_event",
+        {
+            "name": "Temporary birthday",
+            "month": 8,
+            "day": 7,
+            "enabled": True,
+            "expose_entity": True,
+        },
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+    event_id = created["event"]["id"]
+    registry = er.async_get(hass)
+    sensor_id = registry.async_get_entity_id("sensor", DOMAIN, f"event_{event_id}")
+    assert sensor_id is not None
+
+    await hass.services.async_call(
+        DOMAIN,
+        "update_event",
+        {"event_id": event_id, "expose_entity": False},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+    assert registry.async_get_entity_id("sensor", DOMAIN, f"event_{event_id}") == sensor_id
+    assert hass.states.get(sensor_id).state == "unavailable"
+
+    await hass.services.async_call(
+        DOMAIN,
+        "delete_event",
+        {"event_id": event_id},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+    assert registry.async_get_entity_id("sensor", DOMAIN, f"event_{event_id}") is None
+
+
+async def test_failed_platform_unload_keeps_panel_and_services(hass, monkeypatch):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    original_unload_platforms = hass.config_entries.async_unload_platforms
+    failed_unload = AsyncMock(return_value=False)
+    monkeypatch.setattr(hass.config_entries, "async_unload_platforms", failed_unload)
+
+    assert not await async_unload_entry(hass, entry)
+    assert frontend.async_panel_exists(hass, PANEL_URL)
+    assert hass.services.has_service(DOMAIN, "create_event")
+    failed_unload.assert_awaited_once()
+
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_unload_platforms",
+        original_unload_platforms,
+    )
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
