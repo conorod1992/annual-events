@@ -212,6 +212,7 @@ class ProactiveEventCoordinator:
                     raise
             return
 
+        reconciled_today = False
         start = self._last_reconciled_date + timedelta(days=1)
         if start <= due_through:
             earliest = due_through - timedelta(days=MAX_PROACTIVE_CATCHUP_DAYS - 1)
@@ -226,12 +227,13 @@ class ProactiveEventCoordinator:
             target = start
             while target <= due_through:
                 await self.async_reconcile(target)
+                reconciled_today = reconciled_today or target == today
                 target += timedelta(days=1)
 
         # Re-run today's due set after a restart/reload even if it was already checkpointed.
         # The delivery ledger makes this idempotent and it closes the race where an event edit
         # was queued immediately before the previous coordinator stopped.
-        if after_trigger and self._last_reconciled_date is not None and today <= self._last_reconciled_date:
+        if after_trigger and not reconciled_today:
             await self.async_reconcile(today)
 
     async def _async_save_state(self) -> None:
