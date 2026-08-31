@@ -74,10 +74,15 @@ def normalize_advance_notice_days(value: Any) -> tuple[int, ...]:
     for item in raw:
         if isinstance(item, bool):
             raise ValueError("advance notice days must be integers")
-        try:
-            day = int(item)
-        except (TypeError, ValueError) as err:
-            raise ValueError("advance notice days must be integers") from err
+        if isinstance(item, int):
+            day = item
+        elif isinstance(item, str):
+            try:
+                day = int(item.strip())
+            except ValueError as err:
+                raise ValueError("advance notice days must be integers") from err
+        else:
+            raise ValueError("advance notice days must be integers")
         if not 1 <= day <= MAX_ADVANCE_NOTICE_DAYS:
             raise ValueError(f"advance notice days must be from 1 to {MAX_ADVANCE_NOTICE_DAYS}")
         days.add(day)
@@ -101,10 +106,11 @@ def translate_domain_error(err: Exception) -> HomeAssistantError:
 
 def event_with_next(hass: HomeAssistant, event: AnnualEvent) -> dict[str, Any]:
     """Serialize an event and its next calculated occurrence."""
-    occurrence = get_manager(hass).next_for_event(event, local_today(), get_policy(hass))
+    today = local_today()
+    occurrence = get_manager(hass).next_for_event(event, today, get_policy(hass))
     return {
         **event.to_dict(),
         "next_occurrence": occurrence.occurrence_date.isoformat(),
-        "days_until": (occurrence.occurrence_date - local_today()).days,
+        "days_until": (occurrence.occurrence_date - today).days,
         "occurrence_number": occurrence.occurrence_number,
     }
