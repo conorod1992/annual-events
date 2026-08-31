@@ -5,7 +5,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.annual_events.const import DOMAIN, EVENT_OCCURRENCE
 from custom_components.annual_events.helpers import normalize_advance_notice_days
 from custom_components.annual_events.manager import AnnualEventsManager
-from custom_components.annual_events.proactive import ProactiveEventCoordinator
+from custom_components.annual_events.proactive import DeliveryState, ProactiveEventCoordinator
 
 from .conftest import MemoryStorage, event_data
 
@@ -14,13 +14,13 @@ class MemoryDeliveryStorage:
     """In-memory proactive delivery ledger."""
 
     def __init__(self) -> None:
-        self.deliveries: dict[str, str] = {}
+        self.state = DeliveryState({})
 
-    async def async_load(self) -> dict[str, str]:
-        return dict(self.deliveries)
+    async def async_load(self) -> DeliveryState:
+        return DeliveryState(dict(self.state.deliveries), self.state.last_reconciled_date)
 
-    async def async_save(self, deliveries: dict[str, str]) -> None:
-        self.deliveries = dict(deliveries)
+    async def async_save(self, state: DeliveryState) -> None:
+        self.state = DeliveryState(dict(state.deliveries), state.last_reconciled_date)
 
 
 async def prepare(hass, options):

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any, Protocol, cast
 
@@ -24,6 +26,7 @@ from .const import (
     DELIVERY_STORAGE_VERSION,
     EVENT_OCCURRENCE,
     MAX_DELIVERY_LEDGER_ENTRIES,
+    MAX_PROACTIVE_CATCHUP_DAYS,
     PROACTIVE_MODE_CUSTOM,
     PROACTIVE_MODE_OFF,
     SIGNAL_UPDATED,
@@ -32,13 +35,23 @@ from .helpers import get_advance_notice_days, get_policy
 from .manager import AnnualEventsManager
 from .models import AnnualEvent, EventOccurrence
 
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class DeliveryState:
+    """Persisted proactive delivery state."""
+
+    deliveries: dict[str, str]
+    last_reconciled_date: date | None = None
+
 
 class DeliveryStorageProtocol(Protocol):
     """Small persistence interface used by the coordinator and tests."""
 
-    async def async_load(self) -> dict[str, str]: ...
+    async def async_load(self) -> DeliveryState: ...
 
-    async def async_save(self, deliveries: dict[str, str]) -> None: ...
+    async def async_save(self, state: DeliveryState) -> None: ...
 
 
 class DeliveryStorage:
@@ -51,11 +64,11 @@ class DeliveryStorage:
             f"{DELIVERY_STORAGE_KEY}.{entry_id}",
         )
 
-    async def async_load(self) -> dict[str, str]:
-        """Load the ledger without silently discarding deduplication state."""
+    async def async_load(self) -> DeliveryState:
+        """Load the ledger and optional restart catch-up checkpoint."""
         data = await self._store.async_load()
         if data is None:
-            return {}
+            return DeliveryState({})
         if not isinstance(data, dict) or not isinstance(data.get("deliveries"), dict):
             raise ValueError("Annual Events delivery storage is invalid")
         deliveries: dict[str, str] = {}
@@ -67,11 +80,26 @@ class DeliveryStorage:
             except ValueError as err:
                 raise ValueError("Annual Events delivery storage contains an invalid date") from err
             deliveries[key] = delivered_on
-        return deliveries
 
-    async def async_save(self, deliveries: dict[str, str]) -> None:
-        """Atomically persist a deterministic bounded ledger."""
-        await self._store.async_save({"deliveries": dict(sorted(deliveries.items()))})
+        last_reconciled_date: date | None = None
+        raw_last_reconciled = data.get("last_reconciled_date")
+        if raw_last_reconciled is not None:
+            if not isinstance(raw_last_reconciled, str):
+                raise ValueError("Annual Events delivery storage contains an invalid checkpoint")
+            try:
+                last_reconciled_date = date.fromisoformat(raw_last_reconciled)
+            except ValueError as err:
+                raise ValueError(
+                    "Annual Events delivery storage contains an invalid checkpoint date"
+                ) from err
+        return DeliveryState(deliveries, last_reconciled_date)
+
+    async def async_save(self, state: DeliveryState) -> None:
+        """Atomically persist a deterministic bounded ledger and checkpoint."""
+        payload: dict[str, Any] = {"deliveries": dict(sorted(state.deliveries.items()))}
+        if state.last_reconciled_date is not None:
+            payload["last_reconciled_date"] = state.last_reconciled_date.isoformat()
+        await self._store.async_save(payload)
 
 
 class ProactiveEventCoordinator:
@@ -89,8 +117,12 @@ class ProactiveEventCoordinator:
         self._manager = manager
         self._storage = storage or DeliveryStorage(hass, entry.entry_id)
         self._deliveries: dict[str, str] = {}
+        self._last_reconciled_date: date | None = None
         self._lock = asyncio.Lock()
         self._unsubscribers: list[Callable[[], None]] = []
+        self._tasks: set[asyncio.Task[Any]] = set()
+        self._started = False
+        self._stopped = False
 
     @property
     def trigger_time(self) -> time:
@@ -101,14 +133,20 @@ class ProactiveEventCoordinator:
         return time.fromisoformat(cast(str, value))
 
     async def async_start(self) -> None:
-        """Load delivery state, attach listeners, and catch up when due."""
+        """Load delivery state, attach listeners, and catch up missed due dates."""
+        if self._started:
+            return
+        self._started = True
+        self._stopped = False
         try:
-            self._deliveries = await self._storage.async_load()
+            state = await self._storage.async_load()
+            self._deliveries = state.deliveries
+            self._last_reconciled_date = state.last_reconciled_date
             trigger = self.trigger_time
             self._unsubscribers.append(
                 async_track_time_change(
                     self._hass,
-                    self._async_time_changed,
+                    self._time_changed,
                     hour=trigger.hour,
                     minute=trigger.minute,
                     second=trigger.second,
@@ -119,31 +157,93 @@ class ProactiveEventCoordinator:
             )
             now = dt_util.now()
             await self._async_prune(now.date())
-            if now.time() >= trigger:
-                await self.async_reconcile(now.date())
+            await self._async_startup_reconcile(now)
         except Exception:
             self.async_stop()
             raise
 
     @callback
     def async_stop(self) -> None:
-        """Detach daily and collection listeners."""
+        """Detach listeners and cancel coordinator-owned reconciliation work."""
+        self._started = False
+        self._stopped = True
         for unsubscribe in self._unsubscribers:
             unsubscribe()
         self._unsubscribers.clear()
+        for task in tuple(self._tasks):
+            task.cancel()
+        self._tasks.clear()
+
+    @callback
+    def _schedule_reconcile(self, target_date: date) -> None:
+        """Schedule one coordinator-owned reconciliation task."""
+        if self._stopped or not self._started:
+            return
+        task = self._hass.async_create_task(
+            self.async_reconcile(target_date), "annual_events_reconcile_deliveries"
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     @callback
     def _events_updated(self) -> None:
         """Catch up a newly relevant edited occurrence after trigger time."""
         now = dt_util.now()
         if now.time() >= self.trigger_time:
-            self._hass.async_create_task(
-                self.async_reconcile(now.date()), "annual_events_reconcile_deliveries"
-            )
+            self._schedule_reconcile(now.date())
 
-    async def _async_time_changed(self, now: datetime) -> None:
-        """Run the scheduled local-date reconciliation."""
-        await self.async_reconcile(dt_util.as_local(now).date())
+    @callback
+    def _time_changed(self, now: datetime) -> None:
+        """Schedule the daily local-date reconciliation."""
+        self._schedule_reconcile(dt_util.as_local(now).date())
+
+    async def _async_startup_reconcile(self, now: datetime) -> None:
+        """Catch up completed trigger dates without replaying unbounded history."""
+        today = now.date()
+        after_trigger = now.time() >= self.trigger_time
+        due_through = today if after_trigger else today - timedelta(days=1)
+
+        if self._last_reconciled_date is None:
+            if after_trigger:
+                await self.async_reconcile(today)
+            else:
+                self._last_reconciled_date = due_through
+                try:
+                    await self._async_save_state()
+                except Exception:
+                    self._last_reconciled_date = None
+                    raise
+            return
+
+        reconciled_today = False
+        start = self._last_reconciled_date + timedelta(days=1)
+        if start <= due_through:
+            earliest = due_through - timedelta(days=MAX_PROACTIVE_CATCHUP_DAYS - 1)
+            if start < earliest:
+                _LOGGER.warning(
+                    "Annual Events proactive catch-up is limited to %d days; dates before %s "
+                    "will not be replayed",
+                    MAX_PROACTIVE_CATCHUP_DAYS,
+                    earliest.isoformat(),
+                )
+                start = earliest
+            target = start
+            while target <= due_through:
+                await self.async_reconcile(target)
+                reconciled_today = reconciled_today or target == today
+                target += timedelta(days=1)
+
+        # Re-run today's due set after a restart/reload even if it was already checkpointed.
+        # The delivery ledger makes this idempotent and it closes the race where an event edit
+        # was queued immediately before the previous coordinator stopped.
+        if after_trigger and not reconciled_today:
+            await self.async_reconcile(today)
+
+    async def _async_save_state(self) -> None:
+        """Persist the current delivery ledger and reconciliation checkpoint."""
+        await self._storage.async_save(
+            DeliveryState(dict(self._deliveries), self._last_reconciled_date)
+        )
 
     @staticmethod
     def _delivery_key(
@@ -175,7 +275,7 @@ class ProactiveEventCoordinator:
             pruned = dict(newest)
         if pruned != self._deliveries:
             self._deliveries = pruned
-            await self._storage.async_save(self._deliveries)
+            await self._async_save_state()
 
     async def _async_emit_once(
         self,
@@ -190,7 +290,7 @@ class ProactiveEventCoordinator:
             return
         self._deliveries[key] = today.isoformat()
         try:
-            await self._storage.async_save(self._deliveries)
+            await self._async_save_state()
         except Exception:
             self._deliveries.pop(key, None)
             raise
@@ -200,10 +300,26 @@ class ProactiveEventCoordinator:
             payload["advance_days"] = advance_days
         self._hass.bus.async_fire(EVENT_OCCURRENCE, payload)
 
+    async def _async_mark_reconciled(self, target_date: date) -> None:
+        """Advance the checkpoint only after the full date reconciles successfully."""
+        if self._last_reconciled_date is not None and target_date <= self._last_reconciled_date:
+            return
+        previous = self._last_reconciled_date
+        self._last_reconciled_date = target_date
+        try:
+            await self._async_save_state()
+        except Exception:
+            self._last_reconciled_date = previous
+            raise
+
     async def async_reconcile(self, today: date | None = None) -> None:
         """Emit all logical notifications due for one local calendar date."""
         today = today or dt_util.now().date()
+        if self._stopped:
+            return
         async with self._lock:
+            if self._stopped:
+                return
             await self._async_prune(today)
             policy = get_policy(self._hass)
             global_days = get_advance_notice_days(self._entry)
@@ -250,3 +366,5 @@ class ProactiveEventCoordinator:
                     today=today,
                     trigger="today",
                 )
+
+            await self._async_mark_reconciled(today)
