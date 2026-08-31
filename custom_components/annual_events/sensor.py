@@ -47,9 +47,7 @@ async def async_setup_entry(
     async def _async_reconcile_once() -> None:
         events = manager.async_list_events()
         existing_ids = {event.id for event in events}
-        desired = {
-            event.id: event for event in events if event.enabled and event.expose_entity
-        }
+        desired = {event.id: event for event in events if event.enabled and event.expose_entity}
 
         for event_id, entity in list(active.items()):
             if event_id not in desired:
