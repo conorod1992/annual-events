@@ -58,6 +58,38 @@ async def test_websocket_crud_list_search_upcoming_between(hass, hass_ws_client)
     assert (await client.receive_json())["result"]["deleted"] is True
 
 
+async def test_list_search_applies_filters_before_ranking_limit(hass, hass_ws_client):
+    client, _ = await setup_websocket(hass, hass_ws_client)
+    records = [
+        AnnualEvent.create(event_data(name=f"Match {index:03d}", important=index >= 500)).to_dict()
+        for index in range(510)
+    ]
+    manager = AnnualEventsManager(MemoryStorage(records), lambda: None)
+    await manager.async_load()
+    hass.config_entries.async_entries(DOMAIN)[0].runtime_data = manager
+
+    await client.send_json_auto_id(
+        {
+            "type": "annual_events/list",
+            "search": "match",
+            "important": True,
+            "offset": 0,
+            "limit": 100,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    assert response["result"]["pagination"] == {
+        "offset": 0,
+        "limit": 100,
+        "total": 10,
+        "has_more": False,
+    }
+    assert [event["name"] for event in response["result"]["events"]] == [
+        f"Match {index:03d}" for index in range(500, 510)
+    ]
+
+
 async def test_websocket_validation_unknown_and_admin_restriction(
     hass, hass_ws_client, hass_read_only_access_token
 ):
@@ -68,6 +100,14 @@ async def test_websocket_validation_unknown_and_admin_restriction(
     invalid = await client.receive_json()
     assert invalid["success"] is False
     assert invalid["error"]["code"] == "invalid_format"
+
+    await client.send_json_auto_id(
+        {"type": "annual_events/create", "name": "Fractional", "month": 7.9, "day": 1}
+    )
+    fractional = await client.receive_json()
+    assert fractional["success"] is False
+    assert fractional["error"]["code"] == "invalid_format"
+
     await client.send_json_auto_id(
         {"type": "annual_events/get", "event_id": "00000000-0000-0000-0000-000000000000"}
     )
