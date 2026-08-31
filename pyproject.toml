@@ -1,6 +1,6 @@
 [project]
 name = "annual-events"
-version = "1.0.0"
+version = "1.1.0"
 description = "A local, collection-oriented Home Assistant integration for yearly events"
 readme = "README.md"
 requires-python = ">=3.13.2"
@@ -14,11 +14,11 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-  "homeassistant>=2026.7.0",
+  "homeassistant==2026.8.3",
   "home-assistant-frontend>=20260729.3",
   "pytest>=8.4,<10",
   "pytest-asyncio>=1.0,<2",
-  "pytest-homeassistant-custom-component>=0.13.351,<0.14",
+  "pytest-homeassistant-custom-component==0.13.357",
   "ruff>=0.16,<0.17",
   "mypy>=1.19,<2",
 ]
