@@ -240,9 +240,10 @@ def websocket_between(
             important_only=msg["important_only"],
             enabled_only=msg["enabled_only"],
         )
+        today = local_today()
         connection.send_result(
             msg["id"],
-            {"occurrences": [item.to_dict(relative_to=local_today()) for item in occurrences]},
+            {"occurrences": [item.to_dict(relative_to=today) for item in occurrences]},
         )
     except (EventValidationError, ValueError) as err:
         _send_domain_error(connection, msg["id"], err)
@@ -255,10 +256,18 @@ def websocket_settings(
 ) -> None:
     """Return non-sensitive integration settings and capabilities."""
     entry = get_entry(hass)
+    custom_categories = sorted(
+        {
+            event.category
+            for event in get_manager(hass).async_list_events()
+            if event.category and event.category not in BUILT_IN_CATEGORIES
+        },
+        key=str.casefold,
+    )
     connection.send_result(
         msg["id"],
         {
-            "categories": list(BUILT_IN_CATEGORIES),
+            "categories": [*BUILT_IN_CATEGORIES, *custom_categories],
             "options": dict(entry.options),
             "is_admin": bool(connection.user and connection.user.is_admin),
             "capabilities": {"llm_read": True, "llm_mutation": False},
