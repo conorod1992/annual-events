@@ -116,6 +116,30 @@ async def test_duplicate_stored_ids_also_block_mutations():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_change",
+    ({"id": "generate"}, {"proactive_advance_days": [7.9]}),
+)
+async def test_unsafe_stored_value_coercions_are_treated_as_corruption(invalid_change):
+    valid = AnnualEvent.create(event_data(name="Valid event")).to_dict()
+    malformed = AnnualEvent.create(event_data(name="Malformed event")).to_dict()
+    malformed.update(invalid_change)
+    original_records = [valid, malformed]
+    storage = MemoryStorage(original_records)
+    manager = AnnualEventsManager(storage, lambda: None)
+
+    await manager.async_load()
+
+    assert [event.name for event in manager.async_list_events()] == ["Valid event"]
+    assert manager.diagnostics_counts()["invalid_storage_record_count"] == 1
+    assert manager.diagnostics_counts()["storage_mutations_blocked"] is True
+    with pytest.raises(StorageIntegrityError):
+        await manager.async_update_event(valid["id"], {"name": "Changed"})
+    assert storage.records == original_records
+    assert storage.save_count == 0
+
+
+@pytest.mark.asyncio
 async def test_unknown_ids():
     manager = AnnualEventsManager(MemoryStorage(), lambda: None)
     await manager.async_load()
