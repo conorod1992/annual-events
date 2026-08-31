@@ -1,6 +1,7 @@
 """Tests for response-data actions."""
 
 import pytest
+import voluptuous as vol
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -68,6 +69,56 @@ async def test_action_validation_and_unknown_id(hass):
             blocking=True,
             return_response=True,
         )
+    with pytest.raises(vol.Invalid, match="expected integer"):
+        await hass.services.async_call(
+            DOMAIN,
+            "get_upcoming",
+            {"days": 7.9},
+            blocking=True,
+            return_response=True,
+        )
+
+
+async def test_mutation_actions_require_admin_user_context(
+    hass, hass_ws_client, hass_read_only_access_token
+):
+    manager = await setup_actions(hass)
+    existing = await manager.async_create_event(
+        {"name": "Protected event", "month": 8, "day": 7}
+    )
+    read_only = await hass_ws_client(hass, hass_read_only_access_token)
+
+    for service, service_data in (
+        ("create_event", {"name": "Denied create", "month": 1, "day": 1}),
+        ("update_event", {"event_id": existing.id, "name": "Denied update"}),
+        ("delete_event", {"event_id": existing.id}),
+    ):
+        await read_only.send_json_auto_id(
+            {
+                "type": "call_service",
+                "domain": DOMAIN,
+                "service": service,
+                "service_data": service_data,
+                "return_response": True,
+            }
+        )
+        denied = await read_only.receive_json()
+        assert denied["success"] is False
+
+    assert [event.name for event in manager.async_list_events()] == ["Protected event"]
+
+    await read_only.send_json_auto_id(
+        {
+            "type": "call_service",
+            "domain": DOMAIN,
+            "service": "search",
+            "service_data": {"query": "protected"},
+            "return_response": True,
+        }
+    )
+    allowed = await read_only.receive_json()
+    assert allowed["success"] is True
+    assert allowed["result"]["response"]["count"] == 1
 
 
 async def test_get_next_and_get_for_date_filters(hass, freezer):
