@@ -89,6 +89,26 @@ async def test_list_search_applies_filters_before_ranking_limit(hass, hass_ws_cl
         f"Match {index:03d}" for index in range(500, 510)
     ]
 
+    await client.send_json_auto_id(
+        {
+            "type": "annual_events/list",
+            "search": "match",
+            "offset": 500,
+            "limit": 10,
+        }
+    )
+    second_page = await client.receive_json()
+    assert second_page["success"] is True
+    assert second_page["result"]["pagination"] == {
+        "offset": 500,
+        "limit": 10,
+        "total": 510,
+        "has_more": False,
+    }
+    assert [event["name"] for event in second_page["result"]["events"]] == [
+        f"Match {index:03d}" for index in range(500, 510)
+    ]
+
 
 async def test_websocket_validation_unknown_and_admin_restriction(
     hass, hass_ws_client, hass_read_only_access_token

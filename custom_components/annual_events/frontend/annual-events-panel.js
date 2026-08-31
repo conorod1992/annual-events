@@ -13,6 +13,8 @@ const TEXT = {
   exposed: "Entity",
 };
 
+const PAGE_SIZE = 500;
+
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -29,12 +31,15 @@ class AnnualEventsPanel extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.events = [];
+    this.total = 0;
     this.dashboard = { today: [], upcoming: [] };
     this.settings = { categories: [], options: {}, is_admin: false };
     this.loading = true;
+    this.loadingMore = false;
     this.error = "";
     this.filters = { search: "", category: "", enabled: "", important: false, sort: "next_occurrence", direction: "asc" };
     this._timer = undefined;
+    this._refreshGeneration = 0;
   }
 
   set hass(value) {
@@ -67,21 +72,48 @@ class AnnualEventsPanel extends HTMLElement {
     }
   }
 
-  async refresh() {
+  async refresh({ append = false } = {}) {
+    const generation = ++this._refreshGeneration;
+    if (!append) this.loadingMore = false;
     const request = {
       type: "annual_events/list",
       sort: this.filters.sort,
       direction: this.filters.direction,
-      offset: 0,
-      limit: 500,
+      offset: append ? this.events.length : 0,
+      limit: PAGE_SIZE,
     };
     if (this.filters.search) request.search = this.filters.search;
     if (this.filters.category) request.category = this.filters.category;
     if (this.filters.enabled !== "") request.enabled = this.filters.enabled === "true";
     if (this.filters.important) request.important = true;
-    const result = await this.call(request);
-    this.events = result.events;
+
+    let result;
+    try {
+      result = await this.call(request);
+    } catch (err) {
+      if (generation !== this._refreshGeneration) return false;
+      throw err;
+    }
+    if (generation !== this._refreshGeneration) return false;
+
+    this.events = append ? [...this.events, ...result.events] : result.events;
+    this.total = result.pagination?.total ?? this.events.length;
+    this.loadingMore = false;
     this.render();
+    return true;
+  }
+
+  async loadMore() {
+    if (this.loadingMore || this.events.length >= this.total) return;
+    this.loadingMore = true;
+    this.render();
+    try {
+      await this.refresh({ append: true });
+    } catch (err) {
+      this.loadingMore = false;
+      this.error = err?.message || "Could not load more annual events.";
+      this.render();
+    }
   }
 
   async refreshDashboard() {
@@ -115,6 +147,11 @@ class AnnualEventsPanel extends HTMLElement {
     return `<div class="overview-item"><div><strong>${escapeHtml(item.name)}</strong><div class="overview-meta">${escapeHtml((item.category || "uncategorized").replaceAll("_", " "))}${number}</div></div><span>${escapeHtml(when)}</span></div>`;
   }
 
+  listFooterTemplate() {
+    if (!this.events.length || this.total <= this.events.length) return "";
+    return `<div class="list-footer"><span>Showing ${this.events.length.toLocaleString()} of ${this.total.toLocaleString()}</span><button id="load-more" class="secondary" ${this.loadingMore ? "disabled" : ""}>${this.loadingMore ? "Loading…" : "Load more"}</button></div>`;
+  }
+
   render() {
     const categories = [...new Set([...this.settings.categories, ...this.events.map((e) => e.category).filter(Boolean)])].sort();
     this.shadowRoot.innerHTML = `
@@ -143,6 +180,7 @@ class AnnualEventsPanel extends HTMLElement {
         .check { display:flex; align-items:center; gap:8px; align-self:center; font-size:14px; color:var(--primary-text-color,#222); }
         .check input { width:auto; }
         .list { display:grid; gap:10px; }
+        .list-footer { display:flex; justify-content:center; align-items:center; gap:14px; padding:18px 0 4px; color:var(--secondary-text-color,#666); font-size:13px; }
         .event { background:var(--card-background-color,#fff); border-radius:14px; box-shadow:var(--ha-card-box-shadow,0 2px 8px #0001); padding:16px; display:grid; grid-template-columns:minmax(180px,1.5fr) minmax(160px,1fr) auto; gap:15px; align-items:center; }
         .name { font-weight:650; font-size:17px; display:flex; align-items:center; gap:7px; } .star { color:#f9a825; }
         .meta { color:var(--secondary-text-color,#666); font-size:13px; margin-top:5px; }
@@ -156,7 +194,7 @@ class AnnualEventsPanel extends HTMLElement {
         .checks { display:flex; flex-wrap:wrap; gap:18px; padding:5px 0; } .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
         .proactive-custom[hidden] { display:none; }
         @media (max-width:760px) { .wrap{padding:15px} header{align-items:center}.subtitle{display:none}.overview{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.filters .search{grid-column:1/-1}.event{grid-template-columns:1fr auto}.datebox{grid-column:1}.actions{grid-column:2;grid-row:1/3;flex-direction:column}.switches{flex-direction:column}.form{grid-template-columns:1fr}.full{grid-column:auto} }
-        @media (max-width:460px) { .filters{grid-template-columns:1fr}.filters .search{grid-column:auto}.event{grid-template-columns:1fr}.actions{grid-column:1;grid-row:auto;flex-direction:row;justify-content:space-between}.switches{flex-direction:row}.overview-item{align-items:flex-start;flex-direction:column;gap:4px} }
+        @media (max-width:460px) { .filters{grid-template-columns:1fr}.filters .search{grid-column:auto}.event{grid-template-columns:1fr}.actions{grid-column:1;grid-row:auto;flex-direction:row;justify-content:space-between}.switches{flex-direction:row}.overview-item{align-items:flex-start;flex-direction:column;gap:4px}.list-footer{flex-direction:column;gap:8px} }
       </style>
       <div class="wrap">
         <header><div><h1>${TEXT.title}</h1><p class="subtitle">${TEXT.subtitle}</p></div>${this.settings.is_admin ? `<button id="add">＋ ${TEXT.add}</button>` : ""}</header>
@@ -168,7 +206,7 @@ class AnnualEventsPanel extends HTMLElement {
           <label>Sort<select id="sort"><option value="next_occurrence" ${this.filters.sort === "next_occurrence" ? "selected" : ""}>Next occurrence</option><option value="name" ${this.filters.sort === "name" ? "selected" : ""}>Name</option></select></label>
           <label class="check"><input id="important" type="checkbox" ${this.filters.important ? "checked" : ""}/> Important only</label>
         </section>
-        ${this.loading ? `<div class="status">${TEXT.loading}</div>` : this.error ? `<div class="status error" role="alert">${escapeHtml(this.error)}<br/><button id="retry" class="secondary">Retry</button></div>` : this.events.length ? `<main class="list">${this.events.map((event) => this.eventTemplate(event)).join("")}</main>` : `<div class="status">${TEXT.empty}</div>`}
+        ${this.loading ? `<div class="status">${TEXT.loading}</div>` : this.error ? `<div class="status error" role="alert">${escapeHtml(this.error)}<br/><button id="retry" class="secondary">Retry</button></div>` : this.events.length ? `<main class="list">${this.events.map((event) => this.eventTemplate(event)).join("")}</main>${this.listFooterTemplate()}` : `<div class="status">${TEXT.empty}</div>`}
         <div id="modal"></div>
       </div>`;
     this.bind();
@@ -191,8 +229,22 @@ class AnnualEventsPanel extends HTMLElement {
   bind() {
     this.shadowRoot.getElementById("add")?.addEventListener("click", () => this.openForm());
     this.shadowRoot.getElementById("retry")?.addEventListener("click", () => this.load());
-    const updateFilter = async (key, value) => { this.filters[key] = value; this.error = ""; try { await this.refresh(); } catch (e) { this.error = e.message; this.render(); } };
-    this.shadowRoot.getElementById("search")?.addEventListener("input", (e) => { clearTimeout(this._timer); this._timer = setTimeout(() => updateFilter("search", e.target.value.trim()), 250); });
+    this.shadowRoot.getElementById("load-more")?.addEventListener("click", () => this.loadMore());
+    const updateFilter = async (key, value) => {
+      this.filters[key] = value;
+      this.error = "";
+      this.loadingMore = false;
+      try {
+        await this.refresh();
+      } catch (e) {
+        this.error = e.message;
+        this.render();
+      }
+    };
+    this.shadowRoot.getElementById("search")?.addEventListener("input", (e) => {
+      clearTimeout(this._timer);
+      this._timer = setTimeout(() => updateFilter("search", e.target.value.trim()), 250);
+    });
     for (const key of ["category", "enabled", "sort"]) this.shadowRoot.getElementById(key)?.addEventListener("change", (e) => updateFilter(key, e.target.value));
     this.shadowRoot.getElementById("important")?.addEventListener("change", (e) => updateFilter("important", e.target.checked));
     this.shadowRoot.querySelectorAll(".edit").forEach((button) => button.addEventListener("click", () => this.openForm(this.events.find((e) => e.id === button.closest("article").dataset.id))));
