@@ -9,6 +9,8 @@ from collections.abc import Callable
 from datetime import date
 from typing import Any, Protocol
 
+from homeassistant.exceptions import HomeAssistantError
+
 from .calculations import LeapDayPolicy, next_occurrence, occurrences_between, search_events
 from .models import (
     AnnualEvent,
@@ -19,6 +21,15 @@ from .models import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_STORAGE_INTEGRITY_MESSAGE = (
+    "Annual Events storage contains malformed records. Changes are disabled to prevent data "
+    "loss; repair or restore the stored data, then reload the integration."
+)
+
+
+class StorageIntegrityError(HomeAssistantError):
+    """Raised when stored records make collection mutations unsafe."""
 
 
 class StorageProtocol(Protocol):
@@ -35,10 +46,11 @@ class AnnualEventsManager:
         self._storage = storage
         self._notify = notify
         self._events: dict[str, AnnualEvent] = {}
+        self._invalid_storage_record_count = 0
         self._lock = asyncio.Lock()
 
     async def async_load(self) -> None:
-        """Load stored events once, skipping malformed individual records."""
+        """Load valid stored events while protecting malformed records from overwrite."""
         raw_records = await self._storage.async_load()
         loaded: dict[str, AnnualEvent] = {}
         invalid = 0
@@ -52,10 +64,17 @@ class AnnualEventsManager:
                 invalid += 1
         if invalid:
             _LOGGER.error(
-                "Annual Events storage contains %d malformed record(s); valid records remain available",
+                "Annual Events storage contains %d malformed record(s); valid records remain "
+                "available but changes are disabled to protect stored data",
                 invalid,
             )
         self._events = loaded
+        self._invalid_storage_record_count = invalid
+
+    def _ensure_storage_writable(self) -> None:
+        """Refuse any collection mutation that could overwrite malformed stored rows."""
+        if self._invalid_storage_record_count:
+            raise StorageIntegrityError(_STORAGE_INTEGRITY_MESSAGE)
 
     def _snapshot(self) -> list[dict[str, Any]]:
         return [
@@ -70,6 +89,7 @@ class AnnualEventsManager:
         """Create and persist one event."""
         event = AnnualEvent.create(data)
         async with self._lock:
+            self._ensure_storage_writable()
             if event.id in self._events:
                 raise DuplicateEventIdError(f"event id already exists: {event.id}")
             self._events[event.id] = event
@@ -86,6 +106,7 @@ class AnnualEventsManager:
             old = self._events.get(event_id)
             if old is None:
                 raise EventNotFoundError(event_id)
+            self._ensure_storage_writable()
             new = old.updated(changes)
             self._events[event_id] = new
             try:
@@ -101,6 +122,7 @@ class AnnualEventsManager:
             old = self._events.get(event_id)
             if old is None:
                 raise EventNotFoundError(event_id)
+            self._ensure_storage_writable()
             del self._events[event_id]
             try:
                 await self._persist_and_notify()
@@ -232,6 +254,8 @@ class AnnualEventsManager:
             "enabled_count": sum(event.enabled for event in events),
             "important_count": sum(event.important for event in events),
             "exposed_entity_count": sum(event.expose_entity for event in events),
+            "invalid_storage_record_count": self._invalid_storage_record_count,
+            "storage_mutations_blocked": bool(self._invalid_storage_record_count),
             "category_counts": dict(
                 sorted(Counter(event.category or "uncategorized" for event in events).items())
             ),

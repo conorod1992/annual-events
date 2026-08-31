@@ -5,8 +5,9 @@ from uuid import uuid4
 
 import pytest
 
-from custom_components.annual_events.manager import AnnualEventsManager
+from custom_components.annual_events.manager import AnnualEventsManager, StorageIntegrityError
 from custom_components.annual_events.models import (
+    AnnualEvent,
     DuplicateEventIdError,
     EventNotFoundError,
     EventValidationError,
@@ -68,6 +69,49 @@ async def test_invalid_stored_records_are_skipped_without_overwrite():
     manager = AnnualEventsManager(storage, lambda: None)
     await manager.async_load()
     assert manager.async_list_events() == []
+    assert storage.save_count == 0
+    assert manager.diagnostics_counts()["invalid_storage_record_count"] == 1
+    assert manager.diagnostics_counts()["storage_mutations_blocked"] is True
+
+
+@pytest.mark.asyncio
+async def test_malformed_storage_blocks_all_mutations_without_overwrite():
+    valid = AnnualEvent.create(event_data(name="Valid event")).to_dict()
+    malformed = {"bad": "record"}
+    original_records = [valid, malformed]
+    storage = MemoryStorage(original_records)
+    manager = AnnualEventsManager(storage, lambda: None)
+    await manager.async_load()
+
+    event_id = valid["id"]
+    assert manager.async_get_event(event_id).name == "Valid event"
+
+    with pytest.raises(StorageIntegrityError, match="disabled to prevent data loss"):
+        await manager.async_create_event(event_data(name="New event"))
+    with pytest.raises(StorageIntegrityError, match="disabled to prevent data loss"):
+        await manager.async_update_event(event_id, {"name": "Changed event"})
+    with pytest.raises(StorageIntegrityError, match="disabled to prevent data loss"):
+        await manager.async_delete_event(event_id)
+
+    assert manager.async_get_event(event_id).name == "Valid event"
+    assert storage.records == original_records
+    assert storage.save_count == 0
+
+
+@pytest.mark.asyncio
+async def test_duplicate_stored_ids_also_block_mutations():
+    first = AnnualEvent.create(event_data(name="First event")).to_dict()
+    duplicate = {**first, "name": "Duplicate row"}
+    original_records = [first, duplicate]
+    storage = MemoryStorage(original_records)
+    manager = AnnualEventsManager(storage, lambda: None)
+    await manager.async_load()
+
+    assert [event.name for event in manager.async_list_events()] == ["First event"]
+    assert manager.diagnostics_counts()["invalid_storage_record_count"] == 1
+    with pytest.raises(StorageIntegrityError):
+        await manager.async_delete_event(first["id"])
+    assert storage.records == original_records
     assert storage.save_count == 0
 
 
