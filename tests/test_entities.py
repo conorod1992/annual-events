@@ -93,3 +93,16 @@ async def test_calendar_range_expands_all_day_events(hass):
     assert results[0].end == date(2027, 1, 2)
     assert results[0].uid == f"{event.id}:2027-01-01"
     assert results[0].all_day is True
+
+
+async def test_calendar_event_reaches_future_original_year(hass, freezer):
+    freezer.move_to("2026-08-01 12:00:00+00:00")
+    manager = await prepare(hass)
+    event = await manager.async_create_event(
+        event_data(name="Future milestone", month=8, day=7, year=2040)
+    )
+    calendar = AnnualEventsCalendar(hass, manager)
+
+    assert calendar.event is not None
+    assert calendar.event.start == date(2040, 8, 7)
+    assert calendar.event.uid == f"{event.id}:2040-08-07"
