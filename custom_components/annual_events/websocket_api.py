@@ -40,9 +40,15 @@ def _send_domain_error(connection: ActiveConnection, msg_id: int, err: Exception
 def _filter_records(hass: HomeAssistant, msg: dict[str, Any]) -> list[AnnualEvent]:
     manager = get_manager(hass)
     if query := msg.get("search"):
-        records = manager.async_search_events(query, limit=MAX_LIST_LIMIT)
-    else:
-        records = manager.async_list_events()
+        return manager.async_search_events(
+            query,
+            limit=None,
+            category=msg.get("category"),
+            enabled=msg.get("enabled"),
+            important=msg.get("important"),
+            expose_entity=msg.get("expose_entity"),
+        )
+    records = manager.async_list_events()
     return [
         event
         for event in records
