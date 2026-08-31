@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "annual_events"
 NAME: Final = "Annual Events"
-VERSION: Final = "1.0.0"
+VERSION: Final = "1.1.0"
 
 PLATFORMS: Final = ["sensor", "calendar"]
 STORAGE_KEY: Final = "annual_events.events"
