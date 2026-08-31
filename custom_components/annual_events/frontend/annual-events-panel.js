@@ -74,6 +74,7 @@ class AnnualEventsPanel extends HTMLElement {
 
   async refresh({ append = false } = {}) {
     const generation = ++this._refreshGeneration;
+    if (!append) this.loadingMore = false;
     const request = {
       type: "annual_events/list",
       sort: this.filters.sort,
@@ -96,7 +97,7 @@ class AnnualEventsPanel extends HTMLElement {
     if (generation !== this._refreshGeneration) return false;
 
     this.events = append ? [...this.events, ...result.events] : result.events;
-    this.total = result.total;
+    this.total = result.pagination?.total ?? this.events.length;
     this.loadingMore = false;
     this.render();
     return true;
