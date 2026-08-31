@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
@@ -61,14 +61,8 @@ class AnnualEventsCalendar(CalendarEntity):
     @property
     def event(self) -> CalendarEvent | None:
         """Return the current or next event from in-memory records."""
-        today = local_today()
-        occurrences = self._manager.async_get_occurrences_between(
-            today,
-            date(min(today.year + 8, 9999), 12, 31),
-            policy=get_policy(self._hass_ref),
-            limit=1,
-        )
-        return self._calendar_event(occurrences[0]) if occurrences else None
+        occurrence = self._manager.async_get_next(local_today(), policy=get_policy(self._hass_ref))
+        return self._calendar_event(occurrence) if occurrence else None
 
     async def async_get_events(
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
