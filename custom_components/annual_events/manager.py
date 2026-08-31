@@ -146,18 +146,22 @@ class AnnualEventsManager:
         self,
         query: str,
         *,
-        limit: int = 50,
+        limit: int | None = 50,
         category: str | None = None,
         enabled: bool | None = None,
+        important: bool | None = None,
+        expose_entity: bool | None = None,
     ) -> list[AnnualEvent]:
-        """Search and optionally filter records."""
+        """Search records after applying collection filters."""
         events = [
             event
             for event in self._events.values()
             if (category is None or event.category == category)
             and (enabled is None or event.enabled is enabled)
+            and (important is None or event.important is important)
+            and (expose_entity is None or event.expose_entity is expose_entity)
         ]
-        return search_events(events, query, limit)
+        return search_events(events, query, len(events) if limit is None else limit)
 
     def async_get_upcoming(
         self,
