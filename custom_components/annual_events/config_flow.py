@@ -27,6 +27,7 @@ from .const import (
     NAME,
 )
 from .helpers import normalize_advance_notice_days
+from .schema import coerce_integer
 
 
 class AnnualEventsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -104,7 +105,7 @@ class AnnualEventsOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_UPCOMING_DAYS,
                         default=options.get(CONF_UPCOMING_DAYS, DEFAULT_UPCOMING_DAYS),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=3660)),
+                    ): vol.All(coerce_integer, vol.Range(min=1, max=3660)),
                     vol.Required(
                         CONF_SHOW_PANEL,
                         default=options.get(CONF_SHOW_PANEL, DEFAULT_SHOW_PANEL),
