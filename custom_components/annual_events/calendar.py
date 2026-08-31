@@ -61,9 +61,7 @@ class AnnualEventsCalendar(CalendarEntity):
     @property
     def event(self) -> CalendarEvent | None:
         """Return the current or next event from in-memory records."""
-        occurrence = self._manager.async_get_next(
-            local_today(), policy=get_policy(self._hass_ref)
-        )
+        occurrence = self._manager.async_get_next(local_today(), policy=get_policy(self._hass_ref))
         return self._calendar_event(occurrence) if occurrence else None
 
     async def async_get_events(
