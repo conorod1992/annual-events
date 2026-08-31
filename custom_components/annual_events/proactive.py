@@ -121,7 +121,8 @@ class ProactiveEventCoordinator:
         self._lock = asyncio.Lock()
         self._unsubscribers: list[Callable[[], None]] = []
         self._tasks: set[asyncio.Task[Any]] = set()
-        self._stopped = True
+        self._started = False
+        self._stopped = False
 
     @property
     def trigger_time(self) -> time:
@@ -133,8 +134,9 @@ class ProactiveEventCoordinator:
 
     async def async_start(self) -> None:
         """Load delivery state, attach listeners, and catch up missed due dates."""
-        if not self._stopped:
+        if self._started:
             return
+        self._started = True
         self._stopped = False
         try:
             state = await self._storage.async_load()
@@ -163,6 +165,7 @@ class ProactiveEventCoordinator:
     @callback
     def async_stop(self) -> None:
         """Detach listeners and cancel coordinator-owned reconciliation work."""
+        self._started = False
         self._stopped = True
         for unsubscribe in self._unsubscribers:
             unsubscribe()
@@ -174,7 +177,7 @@ class ProactiveEventCoordinator:
     @callback
     def _schedule_reconcile(self, target_date: date) -> None:
         """Schedule one coordinator-owned reconciliation task."""
-        if self._stopped:
+        if self._stopped or not self._started:
             return
         task = self._hass.async_create_task(
             self.async_reconcile(target_date), "annual_events_reconcile_deliveries"
