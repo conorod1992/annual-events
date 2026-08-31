@@ -65,8 +65,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: AnnualEventsConfigEntry)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: AnnualEventsConfigEntry) -> bool:
-    """Unload platforms and integration-owned UI/action registrations."""
+    """Unload platforms before removing integration-owned shared registrations."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unload_ok:
+        return False
+
     frontend.async_remove_panel(hass, PANEL_URL, warn_if_unknown=False)
     remaining = [
         item
@@ -75,7 +78,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: AnnualEventsConfigEntry
     ]
     if not remaining:
         async_unregister_services(hass)
-    return unload_ok
+    return True
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: AnnualEventsConfigEntry) -> None:
