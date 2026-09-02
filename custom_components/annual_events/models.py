@@ -16,7 +16,7 @@ from .const import (
 )
 
 _CATEGORY_RE = re.compile(r"^[\w][\w -]{0,63}$", re.UNICODE)
-_ICON_RE = re.compile(r"^mdi:[a-z0-9]+(?:-[a-z0-9]+)*$")
+_ICON_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*$")
 
 
 class EventValidationError(ValueError):
@@ -151,7 +151,7 @@ class AnnualEvent:
             raise EventValidationError("category contains unsupported characters")
         icon = _clean_text(data.get("icon"), "icon")
         if icon is not None and not _ICON_RE.fullmatch(icon):
-            raise EventValidationError("icon must be a Material Design icon such as mdi:calendar")
+            raise EventValidationError("icon must be a Home Assistant icon ID such as mdi:calendar")
         notes = _clean_text(data.get("notes"), "notes")
         created_at = _clean_text(data.get("created_at"), "created_at", required=True)
         updated_at = _clean_text(data.get("updated_at"), "updated_at", required=True)
