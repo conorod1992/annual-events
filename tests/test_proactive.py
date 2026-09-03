@@ -19,8 +19,12 @@ from .conftest import MemoryStorage, event_data
 class MemoryDeliveryStorage:
     """Persistent-across-coordinators delivery storage double."""
 
-    def __init__(self, deliveries=None, last_reconciled_date=None):
-        self.state = DeliveryState(dict(deliveries or {}), last_reconciled_date)
+    def __init__(self, deliveries=None, last_reconciled_date=None, pending=None):
+        self.state = DeliveryState(
+            dict(deliveries or {}),
+            last_reconciled_date,
+            {key: dict(value) for key, value in (pending or {}).items()},
+        )
         self.save_count = 0
 
     @property
@@ -28,15 +32,44 @@ class MemoryDeliveryStorage:
         return self.state.deliveries
 
     @property
+    def pending(self):
+        return self.state.pending
+
+    @property
     def last_reconciled_date(self):
         return self.state.last_reconciled_date
 
     async def async_load(self):
-        return DeliveryState(dict(self.state.deliveries), self.state.last_reconciled_date)
+        return DeliveryState(
+            dict(self.state.deliveries),
+            self.state.last_reconciled_date,
+            {key: dict(value) for key, value in self.state.pending.items()},
+        )
 
     async def async_save(self, state):
-        self.state = DeliveryState(dict(state.deliveries), state.last_reconciled_date)
+        self.state = DeliveryState(
+            dict(state.deliveries),
+            state.last_reconciled_date,
+            {key: dict(value) for key, value in state.pending.items()},
+        )
         self.save_count += 1
+
+
+class CorruptDeliveryStorage(MemoryDeliveryStorage):
+    """Delivery storage that starts malformed but can be safely reset."""
+
+    def __init__(self):
+        super().__init__()
+        self.corrupt = True
+
+    async def async_load(self):
+        if self.corrupt:
+            raise ValueError("simulated malformed delivery ledger")
+        return await super().async_load()
+
+    async def async_save(self, state):
+        self.corrupt = False
+        await super().async_save(state)
 
 
 class FailingDeliveryStorage(MemoryDeliveryStorage):
@@ -111,6 +144,7 @@ async def test_advance_day_of_disabled_and_restart_deduplication(hass, freezer):
     }
     assert next(item for item in seen if item["trigger"] == "today")["event_id"] == today.id
     assert storage.last_reconciled_date == date(2026, 8, 1)
+    assert storage.pending == {}
     coordinator.async_stop()
 
     restarted = ProactiveEventCoordinator(hass, entry, manager, storage)
@@ -118,6 +152,66 @@ async def test_advance_day_of_disabled_and_restart_deduplication(hass, freezer):
     await hass.async_block_till_done()
     assert len(seen) == 2
     restarted.async_stop()
+
+
+async def test_malformed_delivery_storage_is_reset_without_blocking_startup(hass, freezer):
+    freezer.move_to("2026-08-01 18:00:00+00:00")
+    manager, entry = await prepare(hass)
+    event = await manager.async_create_event(event_data(name="Today", day=1))
+    seen = []
+    hass.bus.async_listen(EVENT_OCCURRENCE, lambda item: seen.append(item.data))
+    storage = CorruptDeliveryStorage()
+
+    coordinator = ProactiveEventCoordinator(hass, entry, manager, storage)
+    await coordinator.async_start()
+    await hass.async_block_till_done()
+
+    assert storage.corrupt is False
+    assert storage.save_count >= 1
+    assert len(seen) == 1
+    assert seen[0]["event_id"] == event.id
+    assert storage.pending == {}
+    coordinator.async_stop()
+
+
+async def test_pending_outbox_replays_after_crash_between_persist_and_fire(
+    hass, freezer, monkeypatch
+):
+    freezer.move_to("2026-08-01 18:00:00+00:00")
+    manager, entry = await prepare(hass)
+    event = await manager.async_create_event(event_data(name="Crash window", day=1))
+    storage = MemoryDeliveryStorage()
+    original_fire = hass.bus.async_fire
+
+    def fail_fire(*args, **kwargs):
+        raise RuntimeError("simulated crash before event fire")
+
+    monkeypatch.setattr(hass.bus, "async_fire", fail_fire)
+    failed = ProactiveEventCoordinator(hass, entry, manager, storage)
+    try:
+        await failed.async_start()
+    except RuntimeError as err:
+        assert str(err) == "simulated crash before event fire"
+    else:
+        raise AssertionError("startup should fail at the simulated crash point")
+
+    assert storage.deliveries == {}
+    assert len(storage.pending) == 1
+    pending = next(iter(storage.pending.values()))
+    assert pending["payload"]["event_id"] == event.id
+
+    monkeypatch.setattr(hass.bus, "async_fire", original_fire)
+    seen = []
+    hass.bus.async_listen(EVENT_OCCURRENCE, lambda item: seen.append(item.data))
+    recovered = ProactiveEventCoordinator(hass, entry, manager, storage)
+    await recovered.async_start()
+    await hass.async_block_till_done()
+
+    assert len(seen) == 1
+    assert seen[0]["event_id"] == event.id
+    assert storage.pending == {}
+    assert len(storage.deliveries) == 1
+    recovered.async_stop()
 
 
 async def test_restart_before_trigger_waits_and_after_trigger_catches_up(hass, freezer):
@@ -220,6 +314,7 @@ async def test_reload_cancels_old_edit_reconcile_and_new_coordinator_recovers(ha
     await hass.async_block_till_done()
     assert seen == []
     assert not any(event.id in key for key in storage.deliveries)
+    assert not any(event.id in key for key in storage.pending)
 
     storage.release_save.set()
     fresh = ProactiveEventCoordinator(hass, entry, manager, storage)
