@@ -181,12 +181,13 @@ async def test_pending_outbox_replays_after_crash_between_persist_and_fire(
     manager, entry = await prepare(hass)
     event = await manager.async_create_event(event_data(name="Crash window", day=1))
     storage = MemoryDeliveryStorage()
-    original_fire = hass.bus.async_fire
+    bus_type = type(hass.bus)
+    original_fire = bus_type.async_fire
 
-    def fail_fire(*args, **kwargs):
+    def fail_fire(self, *args, **kwargs):
         raise RuntimeError("simulated crash before event fire")
 
-    monkeypatch.setattr(hass.bus, "async_fire", fail_fire)
+    monkeypatch.setattr(bus_type, "async_fire", fail_fire)
     failed = ProactiveEventCoordinator(hass, entry, manager, storage)
     try:
         await failed.async_start()
@@ -200,7 +201,7 @@ async def test_pending_outbox_replays_after_crash_between_persist_and_fire(
     pending = next(iter(storage.pending.values()))
     assert pending["payload"]["event_id"] == event.id
 
-    monkeypatch.setattr(hass.bus, "async_fire", original_fire)
+    monkeypatch.setattr(bus_type, "async_fire", original_fire)
     seen = []
     hass.bus.async_listen(EVENT_OCCURRENCE, lambda item: seen.append(item.data))
     recovered = ProactiveEventCoordinator(hass, entry, manager, storage)
