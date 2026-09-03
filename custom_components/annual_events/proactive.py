@@ -102,7 +102,9 @@ class DeliveryStorage:
                 "Annual Events delivery storage contains an invalid pending occurrence number"
             )
         if not isinstance(payload.get("important"), bool):
-            raise ValueError("Annual Events delivery storage contains an invalid pending importance")
+            raise ValueError(
+                "Annual Events delivery storage contains an invalid pending importance"
+            )
         days_until = payload.get("days_until")
         if isinstance(days_until, bool) or not isinstance(days_until, int):
             raise ValueError("Annual Events delivery storage contains invalid pending days_until")
@@ -133,9 +135,7 @@ class DeliveryStorage:
         raw_pending = data.get("pending", {})
         if not isinstance(raw_pending, dict):
             raise ValueError("Annual Events delivery storage contains an invalid pending outbox")
-        pending = dict(
-            self._validate_pending_row(key, row) for key, row in raw_pending.items()
-        )
+        pending = dict(self._validate_pending_row(key, row) for key, row in raw_pending.items())
 
         last_reconciled_date: date | None = None
         raw_last_reconciled = data.get("last_reconciled_date")
