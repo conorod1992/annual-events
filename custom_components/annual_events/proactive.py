@@ -370,7 +370,7 @@ class ProactiveEventCoordinator:
 
     async def _async_replay_pending(self) -> None:
         """Replay persisted deliveries whose final delivered marker was never saved."""
-        for key in sorted(tuple(self._pending)):
+        for key in sorted(self._pending):
             if key in self._deliveries:
                 self._pending.pop(key, None)
                 await self._async_save_state()
