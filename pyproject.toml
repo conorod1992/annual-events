@@ -1,6 +1,6 @@
 [project]
 name = "annual-events"
-version = "1.2.0"
+version = "1.2.1"
 description = "A local, collection-oriented Home Assistant integration for yearly events"
 readme = "README.md"
 requires-python = ">=3.13.2"
